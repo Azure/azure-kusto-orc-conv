@@ -1,0 +1,21 @@
+<?xml version="1.0"?>
+<package >
+  <metadata>
+    <id>orc2json</id>
+    <version>0.1.2</version>
+    <authors>Alexander Sloutsky</authors>
+    <owners>Alexander Sloutsky</owners>
+    <license type="expression">MIT</license>
+    <projectUrl>https://github.com/Azure/azure-kusto-orc-conv</projectUrl>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <description>ORC to JSON (line delimited) converter tool.</description>
+    <releaseNotes>Initial release.</releaseNotes>
+    <copyright>Copyright 2019</copyright>
+    <tags></tags>
+    <dependencies>
+    </dependencies>
+  </metadata>
+  <files>
+      <file src="bin\**" target="tools\x64" />
+  </files>
+</package>
