@@ -2,7 +2,7 @@
 <package >
   <metadata>
     <id>orc2json</id>
-    <version>0.1.2</version>
+    <version>0.1.5</version>
     <authors>Alexander Sloutsky</authors>
     <owners>Alexander Sloutsky</owners>
     <license type="expression">MIT</license>
