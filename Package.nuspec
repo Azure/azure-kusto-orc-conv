@@ -2,14 +2,14 @@
 <package >
   <metadata>
     <id>orc2json</id>
-    <version>0.1.6</version>
+    <version>0.1.7</version>
     <authors>Alexander Sloutsky</authors>
     <owners>Alexander Sloutsky</owners>
     <license type="expression">MIT</license>
     <projectUrl>https://github.com/Azure/azure-kusto-orc-conv</projectUrl>
     <requireLicenseAcceptance>false</requireLicenseAcceptance>
     <description>ORC to JSON (line delimited) converter tool.</description>
-    <releaseNotes>Support NaN/Inf reals and future dates.</releaseNotes>
+    <releaseNotes>Include all zoneinfo files.</releaseNotes>
     <copyright>Copyright 2020</copyright>
     <tags></tags>
     <dependencies>
