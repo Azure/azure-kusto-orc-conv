@@ -61,13 +61,15 @@
 #define __GETOPT_H__
 
 /* All the headers include this file. */
-#include <crtdefs.h>
 #include <errno.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdarg.h>
 #include <stdio.h>
-#include <windows.h>
+#ifdef _WIN32
+# include <windows.h>
+# include <crtdefs.h>
+#endif
 
 #ifdef __cplusplus
 extern "C" {
@@ -104,16 +106,16 @@ char    *optarg;		/* argument associated with option */
 #define	INORDER 	(int)1
 
 #ifndef __CYGWIN__
+#ifdef _WIN32
 #define __progname __argv[0]
+#else
+#define __progname "<N/A>"
+#endif
 #else
 extern char __declspec(dllimport) *__progname;
 #endif
 
-#ifdef __CYGWIN__
 static char EMSG[] = "";
-#else
-#define	EMSG		""
-#endif
 
 static int getopt_internal(int, char * const *, const char *,
 			   const struct option *, int *, int);

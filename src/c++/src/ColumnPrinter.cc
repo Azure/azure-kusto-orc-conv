@@ -28,6 +28,10 @@
 #include <typeinfo>
 #include <ctype.h>
 
+#ifndef _WIN32
+#include <math.h>
+#endif
+
 #ifdef __clang__
   #pragma clang diagnostic ignored "-Wformat-security"
 #endif
