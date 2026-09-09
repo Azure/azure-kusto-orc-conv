@@ -1055,8 +1055,8 @@ TEST(TestColumnReader, testStringDirectLengthSumOverflow) {
                                       (blob, ARRAY_SIZE(blob))));
 
   // RLEv1 repeat run of INT64_MAX values.
-  const unsigned char lengths[] = {0x00, 0x00, 0xff, 0xff, 0xff, 0xff,
-                                   0xff, 0xff, 0xff, 0xff, 0xff, 0x7f};
+  const unsigned char lengths[] = {0x00, 0x00, 0xff, 0xff, 0xff,
+                                   0xff, 0xff, 0xff, 0xff, 0x7f};
   EXPECT_CALL(streams, getStreamProxy(1, proto::Stream_Kind_LENGTH, true))
       .WillRepeatedly(testing::Return(new SeekableArrayInputStream
                                       (lengths, ARRAY_SIZE(lengths))));
@@ -1065,9 +1065,15 @@ TEST(TestColumnReader, testStringDirectLengthSumOverflow) {
   rowType->addStructField("col0", createPrimitiveType(STRING));
   std::unique_ptr<ColumnReader> reader = buildReader(*rowType, streams);
 
-  StructVectorBatch batch(2, *getDefaultPool());
-  batch.fields.push_back(new StringVectorBatch(2, *getDefaultPool()));
-  EXPECT_THROW(reader->next(batch, 2, 0), ParseError);
+  StructVectorBatch batch(3, *getDefaultPool());
+  batch.fields.push_back(new StringVectorBatch(3, *getDefaultPool()));
+  try {
+    reader->next(batch, 3, 0);
+    FAIL() << "Expected string length sum overflow";
+  } catch (const ParseError& e) {
+    EXPECT_EQ("String length overflow in StringDirectColumnReader for column 1",
+              e.what());
+  }
 }
 
 TEST(TestColumnReader, testStringDirectBinaryZeroAndNormalLengths) {
@@ -1206,7 +1212,14 @@ TEST(TestColumnReader, testStringDirectSkipLengthSumOverflow) {
   rowType->addStructField("col0", createPrimitiveType(STRING));
   std::unique_ptr<ColumnReader> reader = buildReader(*rowType, streams);
 
-  EXPECT_THROW(reader->skip(2048), ParseError);
+  try {
+    reader->skip(3072);
+    FAIL() << "Expected string length overflow while skipping";
+  } catch (const ParseError& e) {
+    EXPECT_EQ("String length overflow while skipping in "
+              "StringDirectColumnReader for column 1",
+              e.what());
+  }
 }
 
 TEST_P(TestColumnReaderEncoded, testStringDirectShortBuffer) {
