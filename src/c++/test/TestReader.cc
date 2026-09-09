@@ -224,7 +224,8 @@ namespace orc {
     ReaderOptions options;
     options.setSerializedFileTail(tail);
     std::unique_ptr<Reader> reader = createReader(std::unique_ptr<InputStream>(
-      new MemoryInputStream(file.data(), file.length())), options);
+      new ReportedLengthInputStream(file, stripe->offset(),
+                                    (std::numeric_limits<uint64_t>::max)())), options);
     std::unique_ptr<RowReader> rowReader = reader->createRowReader();
     std::unique_ptr<ColumnVectorBatch> batch = rowReader->createRowBatch(1);
     expectParseError("Malformed StripeInformation", [&rowReader, &batch]() {
