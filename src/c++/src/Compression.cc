@@ -1046,11 +1046,17 @@ DIAGNOSTIC_POP
   };
 
   uint64_t ZSTDCompressionStream::doBlockCompression() {
-    return ZSTD_compress(compressorBuffer.data(),
-                         compressorBuffer.size(),
-                         rawInputBuffer.data(),
-                         static_cast<size_t>(bufferSize),
-                         level);
+    size_t compressedSize = ZSTD_compress(compressorBuffer.data(),
+                                         compressorBuffer.size(),
+                                         rawInputBuffer.data(),
+                                         static_cast<size_t>(bufferSize),
+                                         level);
+    if (ZSTD_isError(compressedSize)) {
+      throw std::runtime_error(
+        std::string("ZstdCompressionStream failed to compress: ") +
+        ZSTD_getErrorName(compressedSize));
+    }
+    return compressedSize;
   }
 
   /**
@@ -1084,10 +1090,15 @@ DIAGNOSTIC_POP
                                                uint64_t length,
                                                char *output,
                                                size_t maxOutputLength) {
-    return static_cast<uint64_t>(ZSTD_decompress(output,
-                                                 maxOutputLength,
-                                                 input,
-                                                 length));
+    size_t decompressedSize = ZSTD_decompress(output,
+                                              maxOutputLength,
+                                              input,
+                                              length);
+    if (ZSTD_isError(decompressedSize)) {
+      throw ParseError(getName() + " - failed to decompress: " +
+                       ZSTD_getErrorName(decompressedSize));
+    }
+    return decompressedSize;
   }
 
   std::unique_ptr<BufferedOutputStream>
