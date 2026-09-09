@@ -647,7 +647,7 @@ namespace orc {
   }
 
   TEST(Zlib, testCompressedChunkExceedsBlockSize) {
-    const unsigned char buffer[] = {0x04, 0x00, 0x00};
+    const unsigned char buffer[] = {0x06, 0x00, 0x00, 0x4b, 0x04, 0x00};
     std::unique_ptr<SeekableInputStream> result =
       createDecompressor(CompressionKind_ZLIB,
                          std::unique_ptr<SeekableInputStream>
@@ -771,11 +771,19 @@ namespace orc {
   }
 
   TEST(Snappy, testCompressedChunkExceedsBlockSize) {
-    const char buffer[] = {0x04, 0x00, 0x00};
+    const char input[] = {'a'};
+    CompressBuffer compressed(snappy::MaxCompressedLength(ARRAY_SIZE(input)));
+    size_t compressedSize;
+    snappy::RawCompress(input, ARRAY_SIZE(input), compressed.getCompressed(),
+                        &compressedSize);
+    compressed.writeHeader(compressedSize);
+    ASSERT_GT(compressedSize, 1);
+
     std::unique_ptr<SeekableInputStream> result = createDecompressor
         (CompressionKind_SNAPPY,
          std::unique_ptr<SeekableInputStream>
-           (new SeekableArrayInputStream(buffer, ARRAY_SIZE(buffer))),
+           (new SeekableArrayInputStream(compressed.getBuffer(),
+                                         compressed.getBufferSize())),
          1, *getDefaultPool());
     const void *data;
     int length;
