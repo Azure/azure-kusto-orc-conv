@@ -371,6 +371,29 @@ namespace orc {
     ASSERT_TRUE(!result->Next(&ptr, &length));
   }
 
+  TEST_F(TestDecompression, testLzoTruncatedStopCommand) {
+    const unsigned char missingTrailer[] = {0x02, 0x00, 0x00, 0x11};
+    std::unique_ptr<SeekableInputStream> missingTrailerResult =
+      createDecompressor(CompressionKind_LZO,
+                         std::unique_ptr<SeekableInputStream>
+                         (new SeekableArrayInputStream(missingTrailer,
+                                                       ARRAY_SIZE(missingTrailer))),
+                         128*1024, *getDefaultPool());
+
+    const void *ptr;
+    int length;
+    EXPECT_THROW(missingTrailerResult->Next(&ptr, &length), ParseError);
+
+    const unsigned char shortTrailer[] = {0x04, 0x00, 0x00, 0x11, 0x00};
+    std::unique_ptr<SeekableInputStream> shortTrailerResult =
+      createDecompressor(CompressionKind_LZO,
+                         std::unique_ptr<SeekableInputStream>
+                         (new SeekableArrayInputStream(shortTrailer,
+                                                       ARRAY_SIZE(shortTrailer))),
+                         128*1024, *getDefaultPool());
+    EXPECT_THROW(shortTrailerResult->Next(&ptr, &length), ParseError);
+  }
+
   TEST_F(TestDecompression, testLzoLong) {
     // set up a framed lzo buffer with 100,000 'a'
     unsigned char buffer[482];
@@ -410,6 +433,28 @@ namespace orc {
       ASSERT_EQ('a', static_cast<const char*>(ptr)[i]);
     }
     ASSERT_TRUE(!result->Next(&ptr, &length));
+  }
+
+  TEST_F(TestDecompression, testLzoOverflow) {
+    const unsigned char badLzoData[] = {
+      // Header: compressed size = 12, original = false.
+      0x18, 0x00, 0x00,
+
+      // LZO body: token and literal length extension.
+      0x00, 0xFF,
+
+      // Literal data: only 10 bytes, far less than the encoded 273.
+      'A', 'A', 'A', 'A', 'A', 'A', 'A', 'A', 'A', 'A'
+    };
+    std::unique_ptr<SeekableInputStream> result =
+      createDecompressor(CompressionKind_LZO,
+                         std::unique_ptr<SeekableInputStream>
+                         (new SeekableArrayInputStream(badLzoData,
+                                                       ARRAY_SIZE(badLzoData))),
+                         128*1024, *getDefaultPool());
+    const void *ptr;
+    int length;
+    EXPECT_THROW(result->Next(&ptr, &length), ParseError);
   }
 
   TEST_F(TestDecompression, testLz4Empty) {
