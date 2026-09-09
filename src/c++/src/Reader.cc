@@ -43,7 +43,11 @@ namespace orc {
 
   uint64_t getCompressionBlockSize(const proto::PostScript& ps) {
     if (ps.has_compressionblocksize()) {
-      return ps.compressionblocksize();
+      uint64_t blockSize = ps.compressionblocksize();
+      if (blockSize == 0 || blockSize >= (1 << 23)) {
+        throw ParseError("Invalid compression block size");
+      }
+      return blockSize;
     } else {
       return 256 * 1024;
     }
