@@ -17,6 +17,7 @@
  */
 
 #include "orc/ColumnPrinter.hh"
+#include "orc/Exceptions.hh"
 #include "orc/orc-config.hh"
 
 #include "Adaptor.hh"
@@ -642,13 +643,20 @@ void MapColumnPrinter::printRow(uint64_t rowId) {
     if (hasNulls && !notNull[rowId]) {
       writeNull(buffer);
     } else {
+      const size_t tag = static_cast<size_t>(tags[rowId]);
+      if (tag >= fieldPrinter.size()) {
+        throw ParseError("Invalid union tag " + to_string(static_cast<int64_t>(tag)) +
+                         " for union with " +
+                         to_string(static_cast<int64_t>(fieldPrinter.size())) +
+                         " children");
+      }
       writeString(buffer, "{\"tag\":", sizeof("{\"tag\":")-1);
       char numBuffer[64];
       auto len = snprintf(numBuffer, sizeof(numBuffer), "%" INT64_FORMAT_STRING "d",
                static_cast<int64_t>(tags[rowId]));
       writeString(buffer, numBuffer, len);
       writeString(buffer, ",\"value\":", sizeof(",\"value\":")-1);
-      fieldPrinter[tags[rowId]]->printRow(offsets[rowId]);
+      fieldPrinter[tag]->printRow(offsets[rowId]);
       writeChar(buffer, '}');
     }
   }
