@@ -61,6 +61,14 @@ namespace orc {
     }
   }
 
+  bool addOverflow(uint64_t left, uint64_t right, uint64_t& result) {
+    if (right > (std::numeric_limits<uint64_t>::max)() - left) {
+      return true;
+    }
+    result = left + right;
+    return false;
+  }
+
   std::string ColumnSelector::toDotColumnPath() {
       if (columns.empty()) {
           return std::string();
@@ -679,7 +687,12 @@ namespace orc {
   void ReaderImpl::readMetadata() const {
     uint64_t metadataSize = contents->postscript->metadatalength();
     uint64_t footerLength = contents->postscript->footerlength();
-    if (fileLength < metadataSize + footerLength + postscriptLength + 1) {
+    uint64_t metadataEnd;
+    uint64_t metadataAndFooter;
+    if (addOverflow(metadataSize, footerLength, metadataAndFooter) ||
+        addOverflow(metadataAndFooter, postscriptLength, metadataEnd) ||
+        addOverflow(metadataEnd, 1, metadataEnd) ||
+        fileLength < metadataEnd) {
       std::stringstream msg;
       msg << "Invalid Metadata length: fileLength=" << fileLength
           << ", metadataLength=" << metadataSize << ", footerLength=" << footerLength
@@ -898,8 +911,11 @@ namespace orc {
     reader.reset(); // ColumnReaders use lots of memory; free old memory first
     currentStripeInfo = footer->stripes(static_cast<int>(currentStripe));
     uint64_t fileLength = contents->stream->getLength();
-    if (currentStripeInfo.offset() + currentStripeInfo.indexlength() +
-        currentStripeInfo.datalength() + currentStripeInfo.footerlength() >= fileLength) {
+    uint64_t stripeEnd;
+    if (addOverflow(currentStripeInfo.offset(), currentStripeInfo.indexlength(), stripeEnd) ||
+        addOverflow(stripeEnd, currentStripeInfo.datalength(), stripeEnd) ||
+        addOverflow(stripeEnd, currentStripeInfo.footerlength(), stripeEnd) ||
+        stripeEnd >= fileLength) {
       std::stringstream msg;
       msg << "Malformed StripeInformation at stripe index " << currentStripe << ": fileLength="
           << fileLength << ", StripeInfo=(offset=" << currentStripeInfo.offset() << ", indexLength="
@@ -1127,8 +1143,10 @@ namespace orc {
       contents->postscript = REDUNDANT_MOVE(readPostscript(stream.get(),
         buffer.get(), postscriptLength));
       uint64_t footerSize = contents->postscript->footerlength();
-      uint64_t tailSize = 1 + postscriptLength + footerSize;
-      if (tailSize >= fileLength) {
+      uint64_t tailSize = 0;
+      if (addOverflow(1, postscriptLength, tailSize) ||
+          addOverflow(tailSize, footerSize, tailSize) ||
+          tailSize >= fileLength) {
         std::stringstream msg;
         msg << "Invalid ORC tailSize=" << tailSize << ", fileLength=" << fileLength;
         throw ParseError(msg.str());
