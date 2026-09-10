@@ -16,14 +16,62 @@
  * limitations under the License.
  */
 
-#include "orc/Reader.hh"
+#include "Reader.hh"
 
 #include "Adaptor.hh"
 
 #include "wrap/gmock.h"
 #include "wrap/gtest-wrapper.h"
 
+#include <limits>
+#include <stdexcept>
+
 namespace orc {
+
+  uint64_t getCompressionBlockSize(const proto::PostScript& ps);
+
+  proto::PostScript serializedPostScript(uint64_t compressionBlockSize,
+                                         bool setCompressionBlockSize) {
+    proto::PostScript original;
+    original.set_footerlength(0);
+    original.set_compression(proto::NONE);
+    original.set_metadatalength(0);
+    original.add_version(0);
+    original.add_version(12);
+    original.set_magic("ORC");
+    if (setCompressionBlockSize) {
+      original.set_compressionblocksize(compressionBlockSize);
+    }
+
+    std::string serialized;
+    if (!original.SerializeToString(&serialized)) {
+      throw std::runtime_error("Failed to serialize PostScript");
+    }
+
+    proto::PostScript parsed;
+    if (!parsed.ParseFromString(serialized)) {
+      throw std::runtime_error("Failed to parse PostScript");
+    }
+    return parsed;
+  }
+
+  TEST(TestReader, testCompressionBlockSize) {
+    EXPECT_EQ(256 * 1024,
+              getCompressionBlockSize(serializedPostScript(0, false)));
+    EXPECT_EQ(1, getCompressionBlockSize(serializedPostScript(1, true)));
+    EXPECT_EQ((1 << 23) - 1,
+              getCompressionBlockSize(serializedPostScript((1 << 23) - 1,
+                                                            true)));
+
+    EXPECT_THROW(getCompressionBlockSize(serializedPostScript(0, true)),
+                 ParseError);
+    EXPECT_THROW(getCompressionBlockSize(serializedPostScript(1 << 23, true)),
+                 ParseError);
+    EXPECT_THROW(getCompressionBlockSize(
+                     serializedPostScript((std::numeric_limits<uint64_t>::max)(),
+                                          true)),
+                 ParseError);
+  }
 
   TEST(TestReader, testWriterVersions) {
     EXPECT_EQ("original", writerVersionToString(WriterVersion_ORIGINAL));

@@ -362,6 +362,9 @@ DIAGNOSTIC_PUSH
           state = DECOMPRESS_START;
         }
         remainingLength = header >> 1;
+        if (state != DECOMPRESS_ORIGINAL && remainingLength > blockSize) {
+          throw ParseError("Compressed chunk size exceeds block size");
+        }
       } else {
         remainingLength = 0;
       }
@@ -645,6 +648,9 @@ DIAGNOSTIC_POP
           state = DECOMPRESS_START;
         }
         remainingLength = header >> 1;
+        if (state != DECOMPRESS_ORIGINAL && remainingLength > blockSize) {
+          throw ParseError("Compressed chunk size exceeds block size");
+        }
       } else {
         remainingLength = 0;
       }
@@ -652,6 +658,7 @@ DIAGNOSTIC_POP
 
     std::unique_ptr<SeekableInputStream> input;
     MemoryPool& pool;
+    const size_t blockSize;
 
     // may need to stitch together multiple input buffers;
     // to give snappy a contiguous block
@@ -685,6 +692,7 @@ DIAGNOSTIC_POP
                     MemoryPool& _pool
                     ) : input(std::move(inStream)),
                         pool(_pool),
+                        blockSize(bufferSize),
                         inputBuffer(pool, bufferSize),
                         outputBuffer(pool, bufferSize),
                         state(DECOMPRESS_HEADER),

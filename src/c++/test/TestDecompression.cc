@@ -646,6 +646,62 @@ namespace orc {
     EXPECT_EQ(16, static_cast<const char*>(ptr)[1]);
   }
 
+  TEST(Zlib, testCompressedChunkExceedsBlockSize) {
+    const unsigned char buffer[] = {0x06, 0x00, 0x00, 0x4b, 0x04, 0x00};
+    std::unique_ptr<SeekableInputStream> result =
+      createDecompressor(CompressionKind_ZLIB,
+                         std::unique_ptr<SeekableInputStream>
+                         (new SeekableArrayInputStream
+                          (buffer, ARRAY_SIZE(buffer))),
+                         1, *getDefaultPool());
+    const void *ptr;
+    int length;
+    EXPECT_THROW(result->Next(&ptr, &length), ParseError);
+  }
+
+  TEST(Zlib, testCompressedChunkAtBlockSize) {
+    const unsigned char buffer[] = {0x06, 0x00, 0x00, 0x4b, 0x04, 0x00};
+    std::unique_ptr<SeekableInputStream> result =
+      createDecompressor(CompressionKind_ZLIB,
+                         std::unique_ptr<SeekableInputStream>
+                         (new SeekableArrayInputStream
+                          (buffer, ARRAY_SIZE(buffer))),
+                         3, *getDefaultPool());
+    const void *ptr;
+    int length;
+    ASSERT_TRUE(result->Next(&ptr, &length));
+    ASSERT_EQ(1, length);
+    EXPECT_EQ('a', static_cast<const char*>(ptr)[0]);
+  }
+
+  TEST(Zlib, testOriginalChunkExceedsBlockSize) {
+    const unsigned char buffer[] = {0x0b, 0x00, 0x00, 0, 1, 2, 3, 4};
+    std::unique_ptr<SeekableInputStream> result =
+      createDecompressor(CompressionKind_ZLIB,
+                         std::unique_ptr<SeekableInputStream>
+                         (new SeekableArrayInputStream
+                          (buffer, ARRAY_SIZE(buffer))),
+                         1, *getDefaultPool());
+    const void *ptr;
+    int length;
+    ASSERT_TRUE(result->Next(&ptr, &length));
+    ASSERT_EQ(5, length);
+    EXPECT_EQ(4, static_cast<const char*>(ptr)[4]);
+  }
+
+  TEST(Zlib, testTruncatedCompressedHeader) {
+    const unsigned char buffer[] = {0x00, 0x00};
+    std::unique_ptr<SeekableInputStream> result =
+      createDecompressor(CompressionKind_ZLIB,
+                         std::unique_ptr<SeekableInputStream>
+                         (new SeekableArrayInputStream
+                          (buffer, ARRAY_SIZE(buffer))),
+                         1, *getDefaultPool());
+    const void *ptr;
+    int length;
+    EXPECT_THROW(result->Next(&ptr, &length), ParseError);
+  }
+
 #define HEADER_SIZE 3
 
   class CompressBuffer {
@@ -712,6 +768,59 @@ namespace orc {
     for (int i=0; i < N; ++i) {
       EXPECT_EQ(i % 8, (reinterpret_cast<const int *>(data))[i]);
     }
+  }
+
+  TEST(Snappy, testCompressedChunkExceedsBlockSize) {
+    const char input[] = {'a'};
+    CompressBuffer compressed(snappy::MaxCompressedLength(ARRAY_SIZE(input)));
+    size_t compressedSize;
+    snappy::RawCompress(input, ARRAY_SIZE(input), compressed.getCompressed(),
+                        &compressedSize);
+    compressed.writeHeader(compressedSize);
+    ASSERT_GT(compressedSize, 1);
+
+    std::unique_ptr<SeekableInputStream> result = createDecompressor
+        (CompressionKind_SNAPPY,
+         std::unique_ptr<SeekableInputStream>
+           (new SeekableArrayInputStream(compressed.getBuffer(),
+                                         compressed.getBufferSize())),
+         1, *getDefaultPool());
+    const void *data;
+    int length;
+    EXPECT_THROW(result->Next(&data, &length), ParseError);
+  }
+
+  TEST(Snappy, testCompressedChunkAtBlockSize) {
+    const char input[] = {'a'};
+    CompressBuffer compressed(snappy::MaxCompressedLength(ARRAY_SIZE(input)));
+    size_t compressedSize;
+    snappy::RawCompress(input, ARRAY_SIZE(input), compressed.getCompressed(),
+                        &compressedSize);
+    compressed.writeHeader(compressedSize);
+
+    std::unique_ptr<SeekableInputStream> result = createDecompressor
+        (CompressionKind_SNAPPY,
+         std::unique_ptr<SeekableInputStream>
+           (new SeekableArrayInputStream(compressed.getBuffer(),
+                                         compressed.getBufferSize())),
+         compressedSize, *getDefaultPool());
+    const void *data;
+    int length;
+    ASSERT_TRUE(result->Next(&data, &length));
+    ASSERT_EQ(1, length);
+    EXPECT_EQ('a', static_cast<const char*>(data)[0]);
+  }
+
+  TEST(Snappy, testTruncatedCompressedHeader) {
+    const char buffer[] = {0x00, 0x00};
+    std::unique_ptr<SeekableInputStream> result = createDecompressor
+        (CompressionKind_SNAPPY,
+         std::unique_ptr<SeekableInputStream>
+           (new SeekableArrayInputStream(buffer, ARRAY_SIZE(buffer))),
+         1, *getDefaultPool());
+    const void *data;
+    int length;
+    EXPECT_THROW(result->Next(&data, &length), ParseError);
   }
 
   TEST(Snappy, testMultiBuffer) {
