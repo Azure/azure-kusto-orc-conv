@@ -27,6 +27,7 @@
 
 #include <cmath>
 #include <iostream>
+#include <limits>
 #include <vector>
 
 #ifdef __clang__
@@ -991,6 +992,234 @@ TEST(TestColumnReader, testShortBlobError) {
   StringVectorBatch *strings = new StringVectorBatch(1024, *getDefaultPool());
   batch.fields.push_back(strings);
   EXPECT_THROW(reader->next(batch, 100, 0), ParseError);
+}
+
+TEST(TestColumnReader, testStringDirectNegativeLength) {
+  MockStripeStreams streams;
+
+  std::vector<bool> selectedColumns(2, true);
+  EXPECT_CALL(streams, getSelectedColumns())
+      .WillRepeatedly(testing::Return(selectedColumns));
+
+  proto::ColumnEncoding directEncoding;
+  directEncoding.set_kind(proto::ColumnEncoding_Kind_DIRECT);
+  EXPECT_CALL(streams, getEncoding(testing::_))
+      .WillRepeatedly(testing::Return(directEncoding));
+
+  EXPECT_CALL(streams, getStreamProxy(0, proto::Stream_Kind_PRESENT, true))
+      .WillRepeatedly(testing::Return(nullptr));
+  EXPECT_CALL(streams, getStreamProxy(1, proto::Stream_Kind_PRESENT, true))
+      .WillRepeatedly(testing::Return(nullptr));
+
+  char blob[1];
+  EXPECT_CALL(streams, getStreamProxy(1, proto::Stream_Kind_DATA, true))
+      .WillRepeatedly(testing::Return(new SeekableArrayInputStream
+                                      (blob, ARRAY_SIZE(blob))));
+
+  // RLEv1 repeat run of INT64_MIN values.
+  const unsigned char lengths[] = {0x00, 0x00, 0x80, 0x80, 0x80, 0x80,
+                                   0x80, 0x80, 0x80, 0x80, 0x80, 0x01};
+  EXPECT_CALL(streams, getStreamProxy(1, proto::Stream_Kind_LENGTH, true))
+      .WillRepeatedly(testing::Return(new SeekableArrayInputStream
+                                      (lengths, ARRAY_SIZE(lengths))));
+
+  std::unique_ptr<Type> rowType = createStructType();
+  rowType->addStructField("col0", createPrimitiveType(STRING));
+  std::unique_ptr<ColumnReader> reader = buildReader(*rowType, streams);
+
+  StructVectorBatch batch(3, *getDefaultPool());
+  batch.fields.push_back(new StringVectorBatch(3, *getDefaultPool()));
+  EXPECT_THROW(reader->next(batch, 3, 0), ParseError);
+}
+
+TEST(TestColumnReader, testStringDirectLengthSumOverflow) {
+  MockStripeStreams streams;
+
+  std::vector<bool> selectedColumns(2, true);
+  EXPECT_CALL(streams, getSelectedColumns())
+      .WillRepeatedly(testing::Return(selectedColumns));
+
+  proto::ColumnEncoding directEncoding;
+  directEncoding.set_kind(proto::ColumnEncoding_Kind_DIRECT);
+  EXPECT_CALL(streams, getEncoding(testing::_))
+      .WillRepeatedly(testing::Return(directEncoding));
+
+  EXPECT_CALL(streams, getStreamProxy(0, proto::Stream_Kind_PRESENT, true))
+      .WillRepeatedly(testing::Return(nullptr));
+  EXPECT_CALL(streams, getStreamProxy(1, proto::Stream_Kind_PRESENT, true))
+      .WillRepeatedly(testing::Return(nullptr));
+
+  char blob[1];
+  EXPECT_CALL(streams, getStreamProxy(1, proto::Stream_Kind_DATA, true))
+      .WillRepeatedly(testing::Return(new SeekableArrayInputStream
+                                      (blob, ARRAY_SIZE(blob))));
+
+  // RLEv1 repeat run of INT64_MAX values.
+  const unsigned char lengths[] = {0x00, 0x00, 0xff, 0xff, 0xff,
+                                   0xff, 0xff, 0xff, 0xff, 0x7f};
+  EXPECT_CALL(streams, getStreamProxy(1, proto::Stream_Kind_LENGTH, true))
+      .WillRepeatedly(testing::Return(new SeekableArrayInputStream
+                                      (lengths, ARRAY_SIZE(lengths))));
+
+  std::unique_ptr<Type> rowType = createStructType();
+  rowType->addStructField("col0", createPrimitiveType(STRING));
+  std::unique_ptr<ColumnReader> reader = buildReader(*rowType, streams);
+
+  StructVectorBatch batch(3, *getDefaultPool());
+  batch.fields.push_back(new StringVectorBatch(3, *getDefaultPool()));
+  try {
+    reader->next(batch, 3, 0);
+    FAIL() << "Expected string length sum overflow";
+  } catch (const ParseError& e) {
+    EXPECT_EQ("String length overflow in StringDirectColumnReader for column 1",
+              e.what());
+  }
+}
+
+TEST(TestColumnReader, testStringDirectBinaryZeroAndNormalLengths) {
+  MockStripeStreams streams;
+
+  std::vector<bool> selectedColumns(2, true);
+  EXPECT_CALL(streams, getSelectedColumns())
+      .WillRepeatedly(testing::Return(selectedColumns));
+
+  proto::ColumnEncoding directEncoding;
+  directEncoding.set_kind(proto::ColumnEncoding_Kind_DIRECT);
+  EXPECT_CALL(streams, getEncoding(testing::_))
+      .WillRepeatedly(testing::Return(directEncoding));
+
+  EXPECT_CALL(streams, getStreamProxy(0, proto::Stream_Kind_PRESENT, true))
+      .WillRepeatedly(testing::Return(nullptr));
+  EXPECT_CALL(streams, getStreamProxy(1, proto::Stream_Kind_PRESENT, true))
+      .WillRepeatedly(testing::Return(nullptr));
+
+  const char blob[] = "abcdef";
+  EXPECT_CALL(streams, getStreamProxy(1, proto::Stream_Kind_DATA, true))
+      .WillRepeatedly(testing::Return(new SeekableArrayInputStream
+                                      (blob, ARRAY_SIZE(blob))));
+
+  // RLEv1 literal run: 0, 2, 0, 3, 1.
+  const unsigned char lengths[] = {0xfb, 0x00, 0x02, 0x00, 0x03, 0x01};
+  EXPECT_CALL(streams, getStreamProxy(1, proto::Stream_Kind_LENGTH, true))
+      .WillRepeatedly(testing::Return(new SeekableArrayInputStream
+                                      (lengths, ARRAY_SIZE(lengths))));
+
+  std::unique_ptr<Type> rowType = createStructType();
+  rowType->addStructField("col0", createPrimitiveType(BINARY));
+  std::unique_ptr<ColumnReader> reader = buildReader(*rowType, streams);
+
+  StructVectorBatch batch(5, *getDefaultPool());
+  StringVectorBatch* strings = new StringVectorBatch(5, *getDefaultPool());
+  batch.fields.push_back(strings);
+  reader->next(batch, 5, 0);
+
+  ASSERT_EQ(0, strings->length[0]);
+  ASSERT_EQ(2, strings->length[1]);
+  EXPECT_EQ('a', strings->data[1][0]);
+  EXPECT_EQ('b', strings->data[1][1]);
+  ASSERT_EQ(0, strings->length[2]);
+  ASSERT_EQ(3, strings->length[3]);
+  EXPECT_EQ('c', strings->data[3][0]);
+  EXPECT_EQ('e', strings->data[3][2]);
+  ASSERT_EQ(1, strings->length[4]);
+  EXPECT_EQ('f', strings->data[4][0]);
+}
+
+TEST(TestColumnReader, testStringDirectNullLengthIsIgnored) {
+  MockStripeStreams streams;
+
+  std::vector<bool> selectedColumns(2, true);
+  EXPECT_CALL(streams, getSelectedColumns())
+      .WillRepeatedly(testing::Return(selectedColumns));
+
+  proto::ColumnEncoding directEncoding;
+  directEncoding.set_kind(proto::ColumnEncoding_Kind_DIRECT);
+  EXPECT_CALL(streams, getEncoding(testing::_))
+      .WillRepeatedly(testing::Return(directEncoding));
+
+  EXPECT_CALL(streams, getStreamProxy(0, proto::Stream_Kind_PRESENT, true))
+      .WillRepeatedly(testing::Return(nullptr));
+  const unsigned char present[] = {0x00, 0xa0};
+  EXPECT_CALL(streams, getStreamProxy(1, proto::Stream_Kind_PRESENT, true))
+      .WillRepeatedly(testing::Return(new SeekableArrayInputStream
+                                      (present, ARRAY_SIZE(present))));
+
+  const char blob[] = "abc";
+  EXPECT_CALL(streams, getStreamProxy(1, proto::Stream_Kind_DATA, true))
+      .WillRepeatedly(testing::Return(new SeekableArrayInputStream
+                                      (blob, ARRAY_SIZE(blob))));
+
+  // RLEv1 literal run for the two non-null values: 0, 3.
+  const unsigned char lengths[] = {0xfe, 0x00, 0x03};
+  EXPECT_CALL(streams, getStreamProxy(1, proto::Stream_Kind_LENGTH, true))
+      .WillRepeatedly(testing::Return(new SeekableArrayInputStream
+                                      (lengths, ARRAY_SIZE(lengths))));
+
+  std::unique_ptr<Type> rowType = createStructType();
+  rowType->addStructField("col0", createPrimitiveType(STRING));
+  std::unique_ptr<ColumnReader> reader = buildReader(*rowType, streams);
+
+  StructVectorBatch batch(3, *getDefaultPool());
+  StringVectorBatch* strings = new StringVectorBatch(3, *getDefaultPool());
+  batch.fields.push_back(strings);
+  strings->length[1] = std::numeric_limits<int64_t>::min();
+  reader->next(batch, 3, 0);
+
+  ASSERT_TRUE(strings->notNull[0]);
+  ASSERT_FALSE(strings->notNull[1]);
+  ASSERT_TRUE(strings->notNull[2]);
+  EXPECT_EQ(0, strings->length[0]);
+  EXPECT_EQ(3, strings->length[2]);
+  EXPECT_EQ('a', strings->data[2][0]);
+  EXPECT_EQ('c', strings->data[2][2]);
+}
+
+TEST(TestColumnReader, testStringDirectSkipLengthSumOverflow) {
+  MockStripeStreams streams;
+
+  std::vector<bool> selectedColumns(2, true);
+  EXPECT_CALL(streams, getSelectedColumns())
+      .WillRepeatedly(testing::Return(selectedColumns));
+
+  proto::ColumnEncoding directEncoding;
+  directEncoding.set_kind(proto::ColumnEncoding_Kind_DIRECT);
+  EXPECT_CALL(streams, getEncoding(testing::_))
+      .WillRepeatedly(testing::Return(directEncoding));
+
+  EXPECT_CALL(streams, getStreamProxy(0, proto::Stream_Kind_PRESENT, true))
+      .WillRepeatedly(testing::Return(nullptr));
+  EXPECT_CALL(streams, getStreamProxy(1, proto::Stream_Kind_PRESENT, true))
+      .WillRepeatedly(testing::Return(nullptr));
+
+  char blob[1];
+  EXPECT_CALL(streams, getStreamProxy(1, proto::Stream_Kind_DATA, true))
+      .WillRepeatedly(testing::Return(new SeekableArrayInputStream
+                                      (blob, ARRAY_SIZE(blob))));
+
+  // 32 repeat runs of 128 values. Each 1024-value chunk is valid, but their
+  // combined byte count overflows size_t.
+  const unsigned char lengthRun[] = {0x7d, 0x00, 0xff, 0xff, 0xff, 0xff,
+                                     0xff, 0xff, 0xff, 0x0f};
+  std::vector<unsigned char> lengths;
+  for (size_t i = 0; i < 32; ++i) {
+    lengths.insert(lengths.end(), lengthRun, lengthRun + ARRAY_SIZE(lengthRun));
+  }
+  EXPECT_CALL(streams, getStreamProxy(1, proto::Stream_Kind_LENGTH, true))
+      .WillRepeatedly(testing::Return(new SeekableArrayInputStream
+                                      (lengths.data(), lengths.size())));
+
+  std::unique_ptr<Type> rowType = createStructType();
+  rowType->addStructField("col0", createPrimitiveType(STRING));
+  std::unique_ptr<ColumnReader> reader = buildReader(*rowType, streams);
+
+  try {
+    reader->skip(3072);
+    FAIL() << "Expected string length overflow while skipping";
+  } catch (const ParseError& e) {
+    EXPECT_EQ("String length overflow while skipping in "
+              "StringDirectColumnReader for column 1",
+              e.what());
+  }
 }
 
 TEST_P(TestColumnReaderEncoded, testStringDirectShortBuffer) {
