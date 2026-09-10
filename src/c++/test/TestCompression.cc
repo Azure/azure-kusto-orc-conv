@@ -58,16 +58,17 @@ namespace orc {
 
     const char * decompressedBuffer;
     int decompressedSize;
-    int pos = 0;
+    size_t pos = 0;
     while (decompressStream->Next(
       reinterpret_cast<const void**>(&decompressedBuffer),
       &decompressedSize)) {
       for (int i = 0; i < decompressedSize; ++i) {
-        EXPECT_LT(static_cast<size_t>(pos), size);
+        EXPECT_LT(pos, size);
         EXPECT_EQ(data[pos], decompressedBuffer[i]);
         ++pos;
       }
     }
+    EXPECT_EQ(size, pos);
   }
 
   void compressAndVerify(CompressionKind kind,
@@ -336,6 +337,19 @@ namespace orc {
 
   TEST(Compression, zstd_protobuff_compression) {
     protobuff_compression(CompressionKind_ZSTD, proto::ZSTD);
+  }
+
+  TEST(Compression, ZstdCorruptStream) {
+    const char corruptData[] = {6, 0, 0, 0, 0, 0};
+    MemoryPool * pool = getDefaultPool();
+    std::unique_ptr<SeekableInputStream> inputStream(
+      new SeekableArrayInputStream(corruptData, sizeof(corruptData)));
+    std::unique_ptr<SeekableInputStream> decompressStream =
+      createDecompressor(CompressionKind_ZSTD, std::move(inputStream), 1024, *pool);
+
+    const void* data;
+    int size;
+    EXPECT_THROW(decompressStream->Next(&data, &size), ParseError);
   }
 
   void testSeekDecompressionStream(CompressionKind kind) {
