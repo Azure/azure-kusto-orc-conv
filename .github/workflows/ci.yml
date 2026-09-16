@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux-cpp:
+    name: Linux C++ build and tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    # Release binaries are produced on Azure Linux 3.0 via the OneBranch
+    # pipeline. That image's package feeds are not reachable from GitHub-hosted
+    # runners, so this gate builds on the runner's own toolchain instead. It
+    # verifies the tests, not the shipping binary.
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake g++ libboost-dev libssl-dev zlib1g-dev
+
+      - name: Configure
+        run: >-
+          cmake -S src -B build
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+          -DBUILD_JAVA=OFF
+          -DANALYZE_JAVA=OFF
+          -DBUILD_LIBHDFSPP=OFF
+          -DBUILD_CPP_TESTS=ON
+
+      - name: Build
+        run: cmake --build build --parallel "$(nproc)"
+
+      - name: Restore upstream unit-test fixtures
+        run: |
+          mkdir -p src/examples
+          curl --fail --location --silent --show-error \
+            --output src/examples/orc_index_int_string.orc \
+            https://raw.githubusercontent.com/apache/orc/edeefd02f6374e1e794bee0bd69f5dc2bc2d01d5/examples/orc_index_int_string.orc
+          curl --fail --location --silent --show-error \
+            --output src/examples/TestOrcFile.testTimestamp.orc \
+            https://raw.githubusercontent.com/apache/orc/edeefd02f6374e1e794bee0bd69f5dc2bc2d01d5/examples/TestOrcFile.testTimestamp.orc
+          echo "a79ae1d84b7d3e9f34f111fd23354259402ca7fb69f49d9386e08286aa968ec6  src/examples/orc_index_int_string.orc" | sha256sum --check
+          echo "cfd4df40570d633a98ff0a1e4d294eca5bffd38326f52b6e727fb6339858662c  src/examples/TestOrcFile.testTimestamp.orc" | sha256sum --check
+
+      - name: Generate local test data
+        run: ./build/c++/test/create-test-files
+
+      # tool-test requires the upstream src/examples ORC corpus, which is not
+      # present in this repository. Re-enable it when that corpus is restored.
+      - name: Run C++ unit tests
+        run: ctest --test-dir build --output-on-failure -R '^orc-test$'
