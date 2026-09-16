@@ -1055,7 +1055,7 @@ TEST(TestColumnReader, testStringDirectLengthSumOverflow) {
                                       (blob, ARRAY_SIZE(blob))));
 
   // RLEv1 repeat run of INT64_MAX values.
-  const unsigned char lengths[] = {0x00, 0x00, 0xff, 0xff, 0xff,
+  const unsigned char lengths[] = {0x00, 0x00, 0xff, 0xff, 0xff, 0xff,
                                    0xff, 0xff, 0xff, 0xff, 0x7f};
   EXPECT_CALL(streams, getStreamProxy(1, proto::Stream_Kind_LENGTH, true))
       .WillRepeatedly(testing::Return(new SeekableArrayInputStream
@@ -1071,7 +1071,7 @@ TEST(TestColumnReader, testStringDirectLengthSumOverflow) {
     reader->next(batch, 3, 0);
     FAIL() << "Expected string length sum overflow";
   } catch (const ParseError& e) {
-    EXPECT_EQ("String length overflow in StringDirectColumnReader for column 1",
+    EXPECT_STREQ("String length overflow in StringDirectColumnReader for column 1",
               e.what());
   }
 }
@@ -1216,7 +1216,7 @@ TEST(TestColumnReader, testStringDirectSkipLengthSumOverflow) {
     reader->skip(3072);
     FAIL() << "Expected string length overflow while skipping";
   } catch (const ParseError& e) {
-    EXPECT_EQ("String length overflow while skipping in "
+    EXPECT_STREQ("String length overflow while skipping in "
               "StringDirectColumnReader for column 1",
               e.what());
   }
