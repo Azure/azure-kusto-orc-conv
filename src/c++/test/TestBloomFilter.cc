@@ -175,6 +175,14 @@ namespace orc {
                                       static_cast<int64_t>(strlen(cnStr))));
   }
 
+  TEST(TestBloomFilter, testSignedHashOverflow) {
+    BloomFilterImpl bloomFilter(128);
+
+    EXPECT_FALSE(bloomFilter.testLong(111));
+    bloomFilter.addLong(-11);
+    EXPECT_TRUE(bloomFilter.testLong(-11));
+  }
+
   TEST(TestBloomFilter, testBloomFilterSerialization) {
     BloomFilterImpl emptyFilter1(128), emptyFilter2(256);
     EXPECT_FALSE(emptyFilter1 == emptyFilter2);
