@@ -130,6 +130,13 @@ namespace orc {
                            static_cast<uint32_t>(length));
   }
 
+  inline uint32_t combineHash(int32_t hash1, int32_t hash2, int32_t iteration) {
+    // Preserve Java int wraparound without invoking signed-overflow UB.
+    uint32_t combinedHash = static_cast<uint32_t>(hash1) +
+      static_cast<uint32_t>(iteration) * static_cast<uint32_t>(hash2);
+    return (combinedHash & 0x80000000U) == 0 ? combinedHash : ~combinedHash;
+  }
+
   /**
    * Implementation of BloomFilter
    */
@@ -228,11 +235,7 @@ namespace orc {
     int32_t hash2 = static_cast<int32_t>(hash64 >> 32);
 
     for (int32_t i = 1; i <= mNumHashFunctions; ++i) {
-      int32_t combinedHash = hash1 + i * hash2;
-      // hashcode should be positive, flip all the bits if it's negative
-      if (combinedHash < 0) {
-        combinedHash = ~combinedHash;
-      }
+      uint32_t combinedHash = combineHash(hash1, hash2, i);
       uint64_t pos = static_cast<uint64_t>(combinedHash) % mNumBits;
       mBitSet->set(pos);
     }
@@ -243,11 +246,7 @@ namespace orc {
     int32_t hash2 = static_cast<int32_t>(hash64 >> 32);
 
     for (int32_t i = 1; i <= mNumHashFunctions; ++i) {
-      int32_t combinedHash = hash1 + i * hash2;
-      // hashcode should be positive, flip all the bits if it's negative
-      if (combinedHash < 0) {
-        combinedHash = ~combinedHash;
-      }
+      uint32_t combinedHash = combineHash(hash1, hash2, i);
       uint64_t pos = static_cast<uint64_t>(combinedHash) % mNumBits;
       if (!mBitSet->get(pos)) {
         return false;
