@@ -78,6 +78,7 @@ namespace orc {
                      serializedPostScript((std::numeric_limits<uint64_t>::max)(),
                                           true)),
                  ParseError);
+  }
 
   class ReportedLengthInputStream : public InputStream {
   public:
