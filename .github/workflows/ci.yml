@@ -17,16 +17,21 @@ jobs:
   linux-cpp:
     name: Linux C++ build and tests
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-    container:
-      image: mcr.microsoft.com/onebranch/azurelinux/build@sha256:eb0a2336fda0397a543f4aa31a4cf5f845a7624ee93fc2ea00a01e4db250d4b8
+    timeout-minutes: 45
 
+    # Release binaries are produced on Azure Linux 3.0 via the OneBranch
+    # pipeline. That image's package feeds are not reachable from GitHub-hosted
+    # runners, so this gate builds on the runner's own toolchain instead. It
+    # verifies the tests, not the shipping binary.
     steps:
       - name: Check out source
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
       - name: Install build dependencies
-        run: tdnf install -y boost-devel snappy-devel protobuf-devel openssl-devel
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake g++ libboost-dev libssl-dev zlib1g-dev
 
       - name: Configure
         run: >-
