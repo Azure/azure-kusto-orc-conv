@@ -413,14 +413,14 @@ namespace orc {
     printer->reset(batch);
     const char* expected[] = {"[]",
                               "[0]",
-                              "[1, 2]",
-                              "[3, 4, 5]",
-                              "[6, 7, 8, 9]",
-                              "[10, 11, 12, 13, 14]",
-                              "[15, 16, 17, 18, 19, 20]",
-                              "[21, 22, 23, 24, 25, 26, 27]",
-                              "[28, 29, 30, 31, 32, 33, 34, 35]",
-                              "[36, 37, 38, 39, 40, 41, 42, 43, 44]"};
+                              "[1,2]",
+                              "[3,4,5]",
+                              "[6,7,8,9]",
+                              "[10,11,12,13,14]",
+                              "[15,16,17,18,19,20]",
+                              "[21,22,23,24,25,26,27]",
+                              "[28,29,30,31,32,33,34,35]",
+                              "[36,37,38,39,40,41,42,43,44]"};
     for(uint64_t i=0; i < batch.numElements; ++i) {
       line.clear();
       printer->printRow(i);
@@ -463,14 +463,14 @@ namespace orc {
     }
     const char* expected[] = {"[]",
                               "[0]",
-                              "[1, 2]",
-                              "[3, 4, 5]",
-                              "[6, 7, 8, 9]",
-                              "[10, 11, 12, 13, 14]",
-                              "[15, 16, 17, 18, 19, 20]",
-                              "[21, 22, 23, 24, 25, 26, 27]",
-                              "[28, 29, 30, 31, 32, 33, 34, 35]",
-                              "[36, 37, 38, 39, 40, 41, 42, 43, 44]"};
+                              "[1,2]",
+                              "[3,4,5]",
+                              "[6,7,8,9]",
+                              "[10,11,12,13,14]",
+                              "[15,16,17,18,19,20]",
+                              "[21,22,23,24,25,26,27]",
+                              "[28,29,30,31,32,33,34,35]",
+                              "[36,37,38,39,40,41,42,43,44]"};
     printer->reset(batch);
     for(uint64_t i=0; i < batch.numElements; ++i) {
       line.clear();
@@ -518,13 +518,10 @@ namespace orc {
       keyBatch->data[i] = static_cast<int64_t>(i);
       valueBatch->data[i] = static_cast<int64_t>(2 * i);
     }
-    const char* expected[] = {"[]",
-                              "[{\"key\": 0, \"value\": 0}]",
-                              ("[{\"key\": 1, \"value\": 2},"
-                               " {\"key\": 2, \"value\": 4}]"),
-                              ("[{\"key\": 3, \"value\": 6},"
-                               " {\"key\": 4, \"value\": 8},"
-                               " {\"key\": 5, \"value\": 10}]")};
+    const char* expected[] = {"{}",
+                              "{0:0}",
+                              "{1:2,2:4}",
+                              "{3:6,4:8,5:10}"};
     printer->reset(batch);
     for(uint64_t i=0; i < batch.numElements; ++i) {
       line.clear();
@@ -590,16 +587,16 @@ namespace orc {
       firstBatch->data[i] = static_cast<int64_t>(i);
       secondBatch->data[i] = static_cast<int64_t>(2 * i);
     }
-    const char* expected[] = {"{\"first\": 0, \"second\": 0}",
-                              "{\"first\": 1, \"second\": 2}",
-                              "{\"first\": 2, \"second\": 4}",
-                              "{\"first\": 3, \"second\": 6}",
-                              "{\"first\": 4, \"second\": 8}",
-                              "{\"first\": 5, \"second\": 10}",
-                              "{\"first\": 6, \"second\": 12}",
-                              "{\"first\": 7, \"second\": 14}",
-                              "{\"first\": 8, \"second\": 16}",
-                              "{\"first\": 9, \"second\": 18}"};
+    const char* expected[] = {"{\"first\":0,\"second\":0}",
+                              "{\"first\":1,\"second\":2}",
+                              "{\"first\":2,\"second\":4}",
+                              "{\"first\":3,\"second\":6}",
+                              "{\"first\":4,\"second\":8}",
+                              "{\"first\":5,\"second\":10}",
+                              "{\"first\":6,\"second\":12}",
+                              "{\"first\":7,\"second\":14}",
+                              "{\"first\":8,\"second\":16}",
+                              "{\"first\":9,\"second\":18}"};
     printer->reset(batch);
     for(uint64_t i=0; i < batch.numElements; ++i) {
       line.clear();
