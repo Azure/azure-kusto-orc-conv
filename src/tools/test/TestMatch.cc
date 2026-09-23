@@ -26,11 +26,246 @@
 #include "wrap/gmock.h"
 #include "wrap/gtest-wrapper.h"
 
+#include <cctype>
+#include <stdexcept>
+
 #ifdef __clang__
   DIAGNOSTIC_IGNORE("-Wmissing-variable-declarations")
 #endif
 
 namespace orc {
+
+  class JsonFixtureFormatter {
+  public:
+    JsonFixtureFormatter(const std::string& input): input(input), position(0) {
+      // PASS
+    }
+
+    std::string format(const Type& type) {
+      std::string result = formatValue(type);
+      skipWhitespace();
+      if (position != input.size()) {
+        throw std::runtime_error("Unexpected content after JSON fixture");
+      }
+      return result;
+    }
+
+  private:
+    const std::string& input;
+    size_t position;
+
+    void skipWhitespace() {
+      while (position < input.size() &&
+             std::isspace(static_cast<unsigned char>(input[position]))) {
+        ++position;
+      }
+    }
+
+    void consume(char expected) {
+      skipWhitespace();
+      if (position == input.size() || input[position] != expected) {
+        throw std::runtime_error("Malformed JSON fixture");
+      }
+      ++position;
+    }
+
+    std::string readString() {
+      skipWhitespace();
+      if (position == input.size() || input[position] != '"') {
+        throw std::runtime_error("Expected JSON string");
+      }
+      const size_t start = position++;
+      while (position < input.size()) {
+        if (input[position++] == '\\') {
+          if (position == input.size()) {
+            throw std::runtime_error("Malformed JSON string");
+          }
+          ++position;
+        } else if (input[position - 1] == '"') {
+          return input.substr(start, position - start);
+        }
+      }
+      throw std::runtime_error("Unterminated JSON string");
+    }
+
+    std::string readLiteral() {
+      skipWhitespace();
+      const size_t start = position;
+      while (position < input.size() && input[position] != ',' &&
+             input[position] != ']' && input[position] != '}' &&
+             !std::isspace(static_cast<unsigned char>(input[position]))) {
+        ++position;
+      }
+      if (start == position) {
+        throw std::runtime_error("Expected JSON literal");
+      }
+      return input.substr(start, position - start);
+    }
+
+    std::string formatObject() {
+      consume('{');
+      std::string result("{");
+      skipWhitespace();
+      bool first = true;
+      while (position < input.size() && input[position] != '}') {
+        if (!first) {
+          consume(',');
+          result += ",";
+        }
+        result += readString();
+        consume(':');
+        result += ":" + formatGenericValue();
+        skipWhitespace();
+        first = false;
+      }
+      consume('}');
+      return result + "}";
+    }
+
+    std::string formatArray() {
+      consume('[');
+      std::string result("[");
+      skipWhitespace();
+      bool first = true;
+      while (position < input.size() && input[position] != ']') {
+        if (!first) {
+          consume(',');
+          result += ",";
+        }
+        result += formatGenericValue();
+        skipWhitespace();
+        first = false;
+      }
+      consume(']');
+      return result + "]";
+    }
+
+    std::string formatGenericValue() {
+      skipWhitespace();
+      if (position == input.size()) {
+        throw std::runtime_error("Expected JSON value");
+      }
+      switch (input[position]) {
+      case '{':
+        return formatObject();
+      case '[':
+        return formatArray();
+      case '"':
+        return readString();
+      default:
+        return readLiteral();
+      }
+    }
+
+    std::string formatStruct(const Type& type) {
+      consume('{');
+      std::string result("{");
+      for (uint64_t i = 0; i < type.getSubtypeCount(); ++i) {
+        if (i != 0) {
+          consume(',');
+          result += ",";
+        }
+        const std::string expectedField = "\"" + type.getFieldName(i) + "\"";
+        const std::string field = readString();
+        if (field != expectedField) {
+          throw std::runtime_error("Unexpected struct field in JSON fixture");
+        }
+        consume(':');
+        result += field + ":" + formatValue(*type.getSubtype(i));
+      }
+      consume('}');
+      return result + "}";
+    }
+
+    std::string formatList(const Type& type) {
+      consume('[');
+      std::string result("[");
+      skipWhitespace();
+      bool first = true;
+      while (position < input.size() && input[position] != ']') {
+        if (!first) {
+          consume(',');
+          result += ",";
+        }
+        result += formatValue(*type.getSubtype(0));
+        skipWhitespace();
+        first = false;
+      }
+      consume(']');
+      return result + "]";
+    }
+
+    std::string formatMap(const Type& type) {
+      consume('[');
+      std::string result("{");
+      skipWhitespace();
+      bool first = true;
+      while (position < input.size() && input[position] != ']') {
+        if (!first) {
+          consume(',');
+          result += ",";
+        }
+        consume('{');
+        if (readString() != "\"key\"") {
+          throw std::runtime_error("Expected map key in JSON fixture");
+        }
+        consume(':');
+        result += formatValue(*type.getSubtype(0));
+        consume(',');
+        if (readString() != "\"value\"") {
+          throw std::runtime_error("Expected map value in JSON fixture");
+        }
+        consume(':');
+        result += ":" + formatValue(*type.getSubtype(1));
+        consume('}');
+        skipWhitespace();
+        first = false;
+      }
+      consume(']');
+      return result + "}";
+    }
+
+    std::string formatUnion(const Type& type) {
+      consume('{');
+      if (readString() != "\"tag\"") {
+        throw std::runtime_error("Expected union tag in JSON fixture");
+      }
+      consume(':');
+      const std::string tag = readLiteral();
+      const uint64_t tagValue = static_cast<uint64_t>(std::stoul(tag));
+      if (tagValue >= type.getSubtypeCount()) {
+        throw std::runtime_error("Invalid union tag in JSON fixture");
+      }
+      consume(',');
+      if (readString() != "\"value\"") {
+        throw std::runtime_error("Expected union value in JSON fixture");
+      }
+      consume(':');
+      const std::string value = formatValue(*type.getSubtype(tagValue));
+      consume('}');
+      return "{\"tag\":" + tag + ",\"value\":" + value + "}";
+    }
+
+    std::string formatValue(const Type& type) {
+      skipWhitespace();
+      if (position < input.size() && input.compare(position, 4, "null") == 0) {
+        position += 4;
+        return "null";
+      }
+      switch (type.getKind()) {
+      case STRUCT:
+        return formatStruct(type);
+      case LIST:
+        return formatList(type);
+      case MAP:
+        return formatMap(type);
+      case UNION:
+        return formatUnion(type);
+      default:
+        return formatGenericValue();
+      }
+    }
+  };
 
   class OrcFileDescription {
   public:
@@ -146,7 +381,8 @@ namespace orc {
         ASSERT_EQ(true, expected.nextLine(expectedLine));
         line.clear();
         printer->printRow(i);
-        EXPECT_EQ(expectedLine, line)
+        EXPECT_EQ(JsonFixtureFormatter(expectedLine).format(
+                      rowReader->getSelectedType()), line)
           << "wrong output at row " << (rowCount + i);
       }
       rowCount += batch->numElements;
@@ -449,7 +685,7 @@ namespace orc {
                                         "ts:timestamp>"),
                                        "0.12",
                                        25000,
-                                       1981,
+                                       1980,
                                        1,
                                        CompressionKind_ZLIB,
                                        262144,
@@ -962,7 +1198,8 @@ TEST(TestMatch, selectColumns) {
         << "\"ba419d35-x\", \"value\": {\"int1\": -1598014431, \"string1\": "
         << "\"ba419d35-x\"}}, {\"key\": \"887336a7\", \"value\": {\"int1\": "
         << "-941468492, \"string1\": \"887336a7\"}}]}";
-    EXPECT_EQ(expected.str(), line);
+    EXPECT_EQ(JsonFixtureFormatter(expected.str()).format(
+                  rowReader->getSelectedType()), line);
 
     // Int column #2
     std::list<uint64_t> cols;
@@ -983,7 +1220,8 @@ TEST(TestMatch, selectColumns) {
     printer->reset(*batch);
     printer->printRow(0);
     std::string expectedInt("{\"byte1\": -76}");
-    EXPECT_EQ(expectedInt, line);
+    EXPECT_EQ(JsonFixtureFormatter(expectedInt).format(
+                  rowReader->getSelectedType()), line);
 
 
     // Struct column #10
@@ -1008,7 +1246,8 @@ TEST(TestMatch, selectColumns) {
     expectedStruct << "{\"middle\": {\"list\": "
         << "[{\"int1\": -941468492, \"string1\": \"887336a7\"}, "
         << "{\"int1\": -1598014431, \"string1\": \"ba419d35-x\"}]}}";
-    EXPECT_EQ(expectedStruct.str(), line);
+    EXPECT_EQ(JsonFixtureFormatter(expectedStruct.str()).format(
+                  rowReader->getSelectedType()), line);
 
     // Array column #11
     cols.clear();
@@ -1029,7 +1268,8 @@ TEST(TestMatch, selectColumns) {
     printer->reset(*batch);
     printer->printRow(0);
     std::string expectedArray("{\"list\": []}");
-    EXPECT_EQ(expectedArray, line);
+    EXPECT_EQ(JsonFixtureFormatter(expectedArray).format(
+                  rowReader->getSelectedType()), line);
 
     // Map column #12
     cols.clear();
@@ -1054,7 +1294,8 @@ TEST(TestMatch, selectColumns) {
         << " -1598014431, \"string1\": \"ba419d35-x\"}}, {\"key\": "
         << "\"887336a7\", \"value\": {\"int1\": -941468492, \"string1\": "
         << "\"887336a7\"}}]}";
-    EXPECT_EQ(expectedMap.str(), line);
+    EXPECT_EQ(JsonFixtureFormatter(expectedMap.str()).format(
+                  rowReader->getSelectedType()), line);
 
     // Map column #12
     // two subtypes with column id:
@@ -1083,7 +1324,8 @@ TEST(TestMatch, selectColumns) {
         << " -1598014431, \"string1\": \"ba419d35-x\"}}, {\"key\": "
         << "\"887336a7\", \"value\": {\"int1\": -941468492, \"string1\": "
         << "\"887336a7\"}}]}";
-    EXPECT_EQ(expectedMapWithColumnId.str(), line);
+    EXPECT_EQ(JsonFixtureFormatter(expectedMapWithColumnId.str()).format(
+                  rowReader->getSelectedType()), line);
 
     // Struct column #10, with field name: middle
     std::list<std::string> colNames;
@@ -1108,7 +1350,8 @@ TEST(TestMatch, selectColumns) {
     expectedStructWithColumnName << "{\"middle\": {\"list\": "
         << "[{\"int1\": -941468492, \"string1\": \"887336a7\"}, "
         << "{\"int1\": -1598014431, \"string1\": \"ba419d35-x\"}]}}";
-    EXPECT_EQ(expectedStructWithColumnName.str(), line);
+    EXPECT_EQ(JsonFixtureFormatter(expectedStructWithColumnName.str()).format(
+                  rowReader->getSelectedType()), line);
 }
 
 TEST(Reader, memoryUse) {

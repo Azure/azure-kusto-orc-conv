@@ -81,8 +81,11 @@ int runProgram(const std::vector<std::string> &args,
 
   out = testing::internal::GetCapturedStdout();
   err = testing::internal::GetCapturedStderr();
-
+#ifdef _WIN32
+  return status;
+#else
   return WEXITSTATUS(status);
+#endif
 }
 
 /**
@@ -103,6 +106,7 @@ std::string findExample(const std::string &name) {
 std::string findProgram(const std::string &name) {
   std::string result = buildDirectory;
   result += "/";
-  result += name;
+  result += name.substr(name.find_last_of("/\\") + 1);
+  result += ORC_EXECUTABLE_SUFFIX;
   return result;
 }

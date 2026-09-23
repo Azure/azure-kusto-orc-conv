@@ -10,7 +10,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-cmake_minimum_required (VERSION 2.6)
+cmake_minimum_required (VERSION 3.5)
 
 project(ORC C CXX)
 
@@ -117,7 +117,25 @@ enable_testing()
 INCLUDE(CheckSourceCompiles)
 INCLUDE(ThirdpartyToolchain)
 
-set (EXAMPLE_DIRECTORY ${CMAKE_SOURCE_DIR}/examples)
+if (BUILD_CPP_TESTS)
+  set (ORC_TEST_DATA_URL
+    "https://github.com/apache/orc/archive/refs/tags/v1.7.0.tar.gz")
+  set (ORC_TEST_DATA_SOURCE_DIR
+    "${PROJECT_BINARY_DIR}/test-data/src/orc_test_data")
+  ExternalProject_Add (orc_test_data
+    PREFIX "${PROJECT_BINARY_DIR}/test-data"
+    URL ${ORC_TEST_DATA_URL}
+    URL_HASH SHA256=84165b9a2ec6161ea6c224e384aea5238500660f428115bdba4f2fd59981b9bc
+    UPDATE_COMMAND ""
+    CONFIGURE_COMMAND ""
+    BUILD_COMMAND ""
+    INSTALL_COMMAND ""
+  )
+  set (EXAMPLE_DIRECTORY
+    "${ORC_TEST_DATA_SOURCE_DIR}/examples")
+else ()
+  set (EXAMPLE_DIRECTORY ${CMAKE_SOURCE_DIR}/examples)
+endif ()
 
 add_subdirectory(c++)
 

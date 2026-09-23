@@ -42,8 +42,32 @@ target_link_libraries (tool-test
   ${GTEST_LIBRARIES}
 )
 
+add_dependencies (tool-test
+  orc_test_data
+  csv-import
+  orc-contents
+  orc-metadata
+  orc-scan
+  orc-statistics
+)
+if (WIN32)
+  add_dependencies (tool-test tzdata_ep)
+endif ()
+target_compile_definitions (tool-test PRIVATE
+  ORC_EXECUTABLE_SUFFIX="${CMAKE_EXECUTABLE_SUFFIX}")
+
 if (TEST_VALGRIND_MEMCHECK)
-  add_test (tool-test valgrind --tool=memcheck --leak-check=full --error-exitcode=1 ./tool-test ${EXAMPLE_DIRECTORY} ${PROJECT_BINARY_DIR})
+  add_test (NAME tool-test
+    COMMAND valgrind --tool=memcheck --leak-check=full --error-exitcode=1
+      $<TARGET_FILE:tool-test> ${EXAMPLE_DIRECTORY}
+      $<TARGET_FILE_DIR:orc-contents>)
 else ()
-  add_test (tool-test tool-test ${EXAMPLE_DIRECTORY} ${PROJECT_BINARY_DIR})
+  add_test (NAME tool-test
+    COMMAND $<TARGET_FILE:tool-test> ${EXAMPLE_DIRECTORY}
+      $<TARGET_FILE_DIR:orc-contents>)
+endif ()
+
+if (WIN32)
+  set_property (TEST tool-test
+    PROPERTY ENVIRONMENT "TZDIR=${TZDATA_DIR}")
 endif ()
