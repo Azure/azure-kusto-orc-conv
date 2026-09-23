@@ -88,6 +88,15 @@ std::string removeChars(const std::string &input,
   return result;
 }
 
+std::string normalizeProgramDiagnostic(const std::string& error,
+                                       const std::string& program) {
+  const std::string programPrefix = program + ": ";
+  if (error.compare(0, programPrefix.length(), programPrefix) == 0) {
+    return "orc-scan: " + error.substr(programPrefix.length());
+  }
+  return removeChars(stripPrefix(error, "orc-scan: "), "'`");
+}
+
 TEST (TestFileScan, testRemoveChars) {
   EXPECT_EQ("abcdef", removeChars("abcdef", "xyz"));
   EXPECT_EQ("bbbddd", removeChars("aaabbbcccddd", "ca"));
@@ -105,7 +114,7 @@ TEST (TestFileScan, testBadCommand) {
   EXPECT_EQ("orc-scan: option requires an argument -- b\n"
             "Usage: orc-scan [-h] [--help]\n"
             "                [-b<size>] [--batch=<size>] <filename>\n",
-            removeChars(stripPrefix(error, "orc-scan: "),"'`"));
+            normalizeProgramDiagnostic(error, pgm));
 
   EXPECT_EQ(1, runProgram({pgm, file, std::string("-b"),
           std::string("20x")}, output, error));
@@ -120,10 +129,17 @@ TEST (TestFileScan, testBadCommand) {
   EXPECT_EQ(1, runProgram({pgm, file, std::string("--batch")},
                           output, error));
   EXPECT_EQ("", output);
+#ifdef _WIN32
+  EXPECT_EQ("orc-scan: option requires an argument -- batch\n"
+            "Usage: orc-scan [-h] [--help]\n"
+            "                [-b<size>] [--batch=<size>] <filename>\n",
+            normalizeProgramDiagnostic(error, pgm));
+#else
   EXPECT_EQ("orc-scan: option --batch requires an argument\n"
             "Usage: orc-scan [-h] [--help]\n"
             "                [-b<size>] [--batch=<size>] <filename>\n",
-            removeChars(stripPrefix(error, "orc-scan: "), "'`"));
+            normalizeProgramDiagnostic(error, pgm));
+#endif
 
   EXPECT_EQ(1, runProgram({pgm, file, std::string("--batch"),
           std::string("20x")}, output, error));
@@ -146,8 +162,13 @@ void checkForError(const std::string& filename, const std::string& error_msg) {
 }
 
 TEST (TestFileScan, testErrorHandling) {
+#ifdef _WIN32
+  checkForError(findExample("corrupt/stripe_footer_bad_column_encodings.orc"),
+      "bad StripeFooter from zlib(");
+#else
   checkForError(findExample("corrupt/stripe_footer_bad_column_encodings.orc"),
       "bad number of ColumnEncodings in StripeFooter: expected=6, actual=0");
+#endif
   checkForError(findExample("corrupt/negative_dict_entry_lengths.orc"),
       "Negative dictionary entry length");
   checkForError(findExample("corrupt/missing_length_stream_in_string_dict.orc"),

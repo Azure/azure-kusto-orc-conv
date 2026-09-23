@@ -331,6 +331,8 @@ else ()
 
   ExternalProject_Add(protobuf_ep
     URL "https://github.com/google/protobuf/archive/v${PROTOBUF_VERSION}.tar.gz"
+    PATCH_COMMAND ${CMAKE_COMMAND} -DPROTOBUF_SOURCE_DIR=<SOURCE_DIR>
+      -P "${CMAKE_SOURCE_DIR}/cmake_modules/patch-protobuf-msvc-runtime.cmake"
     ${PROTOBUF_CONFIGURE}
     ${THIRDPARTY_LOG_OPTIONS}
     BUILD_BYPRODUCTS "${PROTOBUF_STATIC_LIB}" "${PROTOC_STATIC_LIB}")
