@@ -68,10 +68,12 @@ else ()
   set(SNAPPY_STATIC_LIB "${SNAPPY_HOME}/lib/${CMAKE_STATIC_LIBRARY_PREFIX}snappy${CMAKE_STATIC_LIBRARY_SUFFIX}")
   set(SNAPPY_CMAKE_ARGS -DCMAKE_INSTALL_PREFIX=${SNAPPY_HOME}
                         -DBUILD_SHARED_LIBS=OFF -DCMAKE_INSTALL_LIBDIR=lib
-                        -DCMAKE_POLICY_VERSION_MINIMUM=3.5
-                        -DCMAKE_POLICY_DEFAULT_CMP0091=NEW
-                        -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreadedDLL
-                        -DCMAKE_CXX_FLAGS=/MD)
+                        -DCMAKE_POLICY_VERSION_MINIMUM=3.5)
+  if (MSVC)
+    list(APPEND SNAPPY_CMAKE_ARGS -DCMAKE_POLICY_DEFAULT_CMP0091=NEW
+                                  -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreadedDLL
+                                  -DCMAKE_CXX_FLAGS=/MD)
+  endif ()
 
   ExternalProject_Add (snappy_ep
     URL "https://github.com/google/snappy/archive/${SNAPPY_VERSION}.tar.gz"
