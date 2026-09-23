@@ -317,8 +317,11 @@ else ()
                                     -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreadedDLL
                                     -DCMAKE_POLICY_DEFAULT_CMP0091=NEW
                                     -DCMAKE_CXX_FLAGS=/MD)
+    set(PROTOBUF_PATCH PATCH_COMMAND ${CMAKE_COMMAND} -DPROTOBUF_SOURCE_DIR=<SOURCE_DIR>
+                       -P "${CMAKE_SOURCE_DIR}/cmake_modules/patch-protobuf-msvc-runtime.cmake")
   else ()
     set(PROTOBUF_STATIC_LIB_PREFIX ${CMAKE_STATIC_LIBRARY_PREFIX})
+    set(PROTOBUF_PATCH "")
   endif ()
   set(PROTOBUF_STATIC_LIB "${PROTOBUF_PREFIX}/lib/${PROTOBUF_STATIC_LIB_PREFIX}protobuf${CMAKE_STATIC_LIBRARY_SUFFIX}")
   set(PROTOC_STATIC_LIB "${PROTOBUF_PREFIX}/lib/${PROTOBUF_STATIC_LIB_PREFIX}protoc${CMAKE_STATIC_LIBRARY_SUFFIX}")
@@ -333,8 +336,7 @@ else ()
 
   ExternalProject_Add(protobuf_ep
     URL "https://github.com/google/protobuf/archive/v${PROTOBUF_VERSION}.tar.gz"
-    PATCH_COMMAND ${CMAKE_COMMAND} -DPROTOBUF_SOURCE_DIR=<SOURCE_DIR>
-      -P "${CMAKE_SOURCE_DIR}/cmake_modules/patch-protobuf-msvc-runtime.cmake"
+    ${PROTOBUF_PATCH}
     ${PROTOBUF_CONFIGURE}
     ${THIRDPARTY_LOG_OPTIONS}
     BUILD_BYPRODUCTS "${PROTOBUF_STATIC_LIB}" "${PROTOC_STATIC_LIB}")
