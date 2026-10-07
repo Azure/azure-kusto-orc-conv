@@ -67,7 +67,13 @@ else ()
   set(SNAPPY_INCLUDE_DIR "${SNAPPY_HOME}/include")
   set(SNAPPY_STATIC_LIB "${SNAPPY_HOME}/lib/${CMAKE_STATIC_LIBRARY_PREFIX}snappy${CMAKE_STATIC_LIBRARY_SUFFIX}")
   set(SNAPPY_CMAKE_ARGS -DCMAKE_INSTALL_PREFIX=${SNAPPY_HOME}
-                        -DBUILD_SHARED_LIBS=OFF -DCMAKE_INSTALL_LIBDIR=lib)
+                        -DBUILD_SHARED_LIBS=OFF -DCMAKE_INSTALL_LIBDIR=lib
+                        -DCMAKE_POLICY_VERSION_MINIMUM=3.5)
+  if (MSVC)
+    list(APPEND SNAPPY_CMAKE_ARGS -DCMAKE_POLICY_DEFAULT_CMP0091=NEW
+                                  -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreadedDLL
+                                  -DCMAKE_CXX_FLAGS=/MD)
+  endif ()
 
   ExternalProject_Add (snappy_ep
     URL "https://github.com/google/snappy/archive/${SNAPPY_VERSION}.tar.gz"
@@ -109,7 +115,8 @@ else ()
   endif ()
   set(ZLIB_STATIC_LIB "${ZLIB_PREFIX}/lib/${CMAKE_STATIC_LIBRARY_PREFIX}${ZLIB_STATIC_LIB_NAME}${CMAKE_STATIC_LIBRARY_SUFFIX}")
   set(ZLIB_CMAKE_ARGS -DCMAKE_INSTALL_PREFIX=${ZLIB_PREFIX}
-                      -DBUILD_SHARED_LIBS=OFF)
+                      -DBUILD_SHARED_LIBS=OFF
+                      -DCMAKE_POLICY_VERSION_MINIMUM=3.5)
 
   ExternalProject_Add (zlib_ep
     URL "http://zlib.net/fossils/zlib-${ZLIB_VERSION}.tar.gz"
@@ -151,7 +158,8 @@ else ()
   endif ()
   set(ZSTD_STATIC_LIB "${ZSTD_HOME}/lib/${CMAKE_STATIC_LIBRARY_PREFIX}${ZSTD_STATIC_LIB_NAME}${CMAKE_STATIC_LIBRARY_SUFFIX}")
   set(ZSTD_CMAKE_ARGS -DCMAKE_INSTALL_PREFIX=${ZSTD_HOME}
-          -DBUILD_SHARED_LIBS=OFF -DCMAKE_INSTALL_LIBDIR=lib)
+          -DBUILD_SHARED_LIBS=OFF -DCMAKE_INSTALL_LIBDIR=lib
+          -DCMAKE_POLICY_VERSION_MINIMUM=3.5)
 
   if (CMAKE_VERSION VERSION_GREATER "3.7")
     set(ZSTD_CONFIGURE SOURCE_SUBDIR "build/cmake" CMAKE_ARGS ${ZSTD_CMAKE_ARGS})
@@ -193,7 +201,8 @@ else ()
   set(LZ4_STATIC_LIB "${LZ4_PREFIX}/lib/${CMAKE_STATIC_LIBRARY_PREFIX}lz4${CMAKE_STATIC_LIBRARY_SUFFIX}")
   set(LZ4_CMAKE_ARGS -DCMAKE_INSTALL_PREFIX=${LZ4_PREFIX}
                      -DCMAKE_INSTALL_LIBDIR=lib
-                     -DBUILD_SHARED_LIBS=OFF)
+                     -DBUILD_SHARED_LIBS=OFF
+                     -DCMAKE_POLICY_VERSION_MINIMUM=3.5)
 
   if (CMAKE_VERSION VERSION_GREATER "3.7")
     set(LZ4_CONFIGURE SOURCE_SUBDIR "contrib/cmake_unofficial" CMAKE_ARGS ${LZ4_CMAKE_ARGS})
@@ -228,13 +237,13 @@ endif ()
 
 if (WIN32)
   ExternalProject_Add(tzdata_ep
-    URL "ftp://cygwin.osuosl.org/pub/cygwin/noarch/release/tzdata/tzdata-2020b-1.tar.xz"
-    URL_HASH MD5=1be1d18b4042a5011e96d20054beef33
+    URL "https://cygwin.mirror.constant.com/noarch/release/tzdata/tzdata-2026d-1-noarch.tar.xz"
+    URL_HASH SHA256=C3100D066260A767371101A3C61A8F60A52BBAEFA06755FFBF4C46E2AD2C2399
     CONFIGURE_COMMAND ""
     BUILD_COMMAND ""
     INSTALL_COMMAND "")
   ExternalProject_Get_Property(tzdata_ep SOURCE_DIR)
-  set(TZDATA_DIR ${SOURCE_DIR}/share/zoneinfo)
+  set(TZDATA_DIR ${SOURCE_DIR}/usr/share/zoneinfo)
 endif ()
 
 # ----------------------------------------------------------------------
@@ -258,7 +267,9 @@ if (BUILD_CPP_TESTS)
     set(GTEST_CMAKE_ARGS -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
                          -DCMAKE_INSTALL_PREFIX=${GTEST_PREFIX}
                          -Dgtest_force_shared_crt=ON
-                         -DCMAKE_CXX_FLAGS=${GTEST_CMAKE_CXX_FLAGS})
+                         -DCMAKE_CXX_FLAGS=${GTEST_CMAKE_CXX_FLAGS}
+                         -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+                         -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreadedDLL)
 
     ExternalProject_Add(googletest_ep
       BUILD_IN_SOURCE 1
@@ -297,13 +308,20 @@ else ()
   set(PROTOBUF_CMAKE_ARGS -DCMAKE_INSTALL_PREFIX=${PROTOBUF_PREFIX}
                           -DCMAKE_INSTALL_LIBDIR=lib
                           -DBUILD_SHARED_LIBS=OFF
-                          -Dprotobuf_BUILD_TESTS=OFF)
+                          -Dprotobuf_BUILD_TESTS=OFF
+                          -DCMAKE_POLICY_VERSION_MINIMUM=3.5)
   if (MSVC)
     set(PROTOBUF_STATIC_LIB_PREFIX lib)
     list(APPEND PROTOBUF_CMAKE_ARGS -Dprotobuf_MSVC_STATIC_RUNTIME=OFF
-                                    -Dprotobuf_DEBUG_POSTFIX=)
+                                    -Dprotobuf_DEBUG_POSTFIX=
+                                    -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreadedDLL
+                                    -DCMAKE_POLICY_DEFAULT_CMP0091=NEW
+                                    -DCMAKE_CXX_FLAGS=/MD)
+    set(PROTOBUF_PATCH PATCH_COMMAND ${CMAKE_COMMAND} -DPROTOBUF_SOURCE_DIR=<SOURCE_DIR>
+                       -P "${CMAKE_SOURCE_DIR}/cmake_modules/patch-protobuf-msvc-runtime.cmake")
   else ()
     set(PROTOBUF_STATIC_LIB_PREFIX ${CMAKE_STATIC_LIBRARY_PREFIX})
+    set(PROTOBUF_PATCH "")
   endif ()
   set(PROTOBUF_STATIC_LIB "${PROTOBUF_PREFIX}/lib/${PROTOBUF_STATIC_LIB_PREFIX}protobuf${CMAKE_STATIC_LIBRARY_SUFFIX}")
   set(PROTOC_STATIC_LIB "${PROTOBUF_PREFIX}/lib/${PROTOBUF_STATIC_LIB_PREFIX}protoc${CMAKE_STATIC_LIBRARY_SUFFIX}")
@@ -318,6 +336,7 @@ else ()
 
   ExternalProject_Add(protobuf_ep
     URL "https://github.com/google/protobuf/archive/v${PROTOBUF_VERSION}.tar.gz"
+    ${PROTOBUF_PATCH}
     ${PROTOBUF_CONFIGURE}
     ${THIRDPARTY_LOG_OPTIONS}
     BUILD_BYPRODUCTS "${PROTOBUF_STATIC_LIB}" "${PROTOC_STATIC_LIB}")
