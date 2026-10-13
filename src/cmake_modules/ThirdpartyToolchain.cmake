@@ -236,24 +236,23 @@ endif ()
 # IANA - Time Zone Database
 
 if (WIN32)
-  set(TZDATA_ARCHIVE "" CACHE FILEPATH
-      "Local tzdata archive; leave empty to download the pinned public archive")
-  set(TZDATA_URL
-      "https://cygwin.mirror.constant.com/noarch/release/tzdata/tzdata-2026d-1-noarch.tar.xz")
-  if (NOT "${TZDATA_ARCHIVE}" STREQUAL "")
-    get_filename_component(TZDATA_ARCHIVE_ABSOLUTE "${TZDATA_ARCHIVE}" ABSOLUTE
-                           BASE_DIR "${CMAKE_SOURCE_DIR}")
-    if (NOT EXISTS "${TZDATA_ARCHIVE_ABSOLUTE}" OR
-        IS_DIRECTORY "${TZDATA_ARCHIVE_ABSOLUTE}")
-      message(FATAL_ERROR
-              "TZDATA_ARCHIVE must name an existing local archive: ${TZDATA_ARCHIVE_ABSOLUTE}")
-    endif ()
-    set(TZDATA_URL "${TZDATA_ARCHIVE_ABSOLUTE}")
+  include("${CMAKE_SOURCE_DIR}/../third_party/tzdata/tzdata.cmake")
+  set(TZDATA_VENDORED_ARCHIVE
+      "${CMAKE_SOURCE_DIR}/../third_party/tzdata/${TZDATA_ARCHIVE_FILENAME}")
+  set(TZDATA_ARCHIVE "${TZDATA_VENDORED_ARCHIVE}" CACHE FILEPATH
+      "Local tzdata archive; defaults to the repository's vendored package")
+  get_filename_component(TZDATA_ARCHIVE_ABSOLUTE "${TZDATA_ARCHIVE}" ABSOLUTE
+                         BASE_DIR "${CMAKE_SOURCE_DIR}")
+  if (NOT EXISTS "${TZDATA_ARCHIVE_ABSOLUTE}" OR
+      IS_DIRECTORY "${TZDATA_ARCHIVE_ABSOLUTE}")
+    message(FATAL_ERROR
+            "TZDATA_ARCHIVE must name an existing local archive: ${TZDATA_ARCHIVE_ABSOLUTE}")
   endif ()
+  message(STATUS "Using local tzdata archive: ${TZDATA_ARCHIVE_ABSOLUTE}")
 
   ExternalProject_Add(tzdata_ep
-    URL "${TZDATA_URL}"
-    URL_HASH SHA256=C3100D066260A767371101A3C61A8F60A52BBAEFA06755FFBF4C46E2AD2C2399
+    URL "${TZDATA_ARCHIVE_ABSOLUTE}"
+    URL_HASH "SHA256=${TZDATA_SHA256}"
     CONFIGURE_COMMAND ""
     BUILD_COMMAND ""
     INSTALL_COMMAND "")

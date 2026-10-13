@@ -12,14 +12,27 @@ The source code is based on [apache-orc](https://github.com/apache/orc).
     cmake -G "Visual Studio 17 2022" -A x64 -DBUILD_JAVA=Off -DANALYZE_JAVA=Off ..\src
     msbuild ORC.sln /p:Configuration=Release /p:Platform=x64
 
-Windows builds download the pinned time-zone archive by default. For an offline
-or hermetic build, download that exact archive separately and pass its absolute
-path when configuring:
+Windows builds use the Cygwin time-zone archive committed under
+`third_party/tzdata` and verify its SHA-256 before extraction. The build does
+not download tzdata, including in the isolated OneBranch release environment.
+Hermetic callers can still override the default with another local copy:
 
-    cmake -G "Visual Studio 17 2022" -A x64 -DBUILD_JAVA=Off -DANALYZE_JAVA=Off -DTZDATA_ARCHIVE=C:\artifacts\tzdata-2026d-1-noarch.tar.xz ..\src
+    cmake -G "Visual Studio 17 2022" -A x64 -DBUILD_JAVA=Off -DANALYZE_JAVA=Off -DTZDATA_ARCHIVE=C:\artifacts\tzdata-2026e-1-noarch.tar.xz ..\src
 
-The local archive is verified against the same pinned SHA-256 as the default
-download.
+`third_party/tzdata/tzdata.cmake` records the Cygwin package version, canonical
+package path and metadata source, archive name, upstream SHA-512, and build
+SHA-256. GitHub CI checks the current package in Cygwin's machine-readable
+`setup.ini`; a network outage is reported separately from a stale archive.
+
+To discover, verify, and vendor a newer package, create a dedicated branch,
+commit and push it with tracking, and open a draft PR, run exactly this command
+from a clean non-`master` checkout:
+
+    python scripts/manage_tzdata.py update
+
+The updater is operator-driven and refuses dirty worktrees, `master`, missing
+GitHub authentication, conflicting branches, and unchanged packages. CI only
+checks freshness and never pushes changes.
 
 # Packaging
 
