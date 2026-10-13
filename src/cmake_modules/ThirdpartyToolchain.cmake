@@ -236,8 +236,23 @@ endif ()
 # IANA - Time Zone Database
 
 if (WIN32)
+  set(TZDATA_ARCHIVE "" CACHE FILEPATH
+      "Local tzdata archive; leave empty to download the pinned public archive")
+  set(TZDATA_URL
+      "https://cygwin.mirror.constant.com/noarch/release/tzdata/tzdata-2026d-1-noarch.tar.xz")
+  if (NOT "${TZDATA_ARCHIVE}" STREQUAL "")
+    get_filename_component(TZDATA_ARCHIVE_ABSOLUTE "${TZDATA_ARCHIVE}" ABSOLUTE
+                           BASE_DIR "${CMAKE_SOURCE_DIR}")
+    if (NOT EXISTS "${TZDATA_ARCHIVE_ABSOLUTE}" OR
+        IS_DIRECTORY "${TZDATA_ARCHIVE_ABSOLUTE}")
+      message(FATAL_ERROR
+              "TZDATA_ARCHIVE must name an existing local archive: ${TZDATA_ARCHIVE_ABSOLUTE}")
+    endif ()
+    set(TZDATA_URL "${TZDATA_ARCHIVE_ABSOLUTE}")
+  endif ()
+
   ExternalProject_Add(tzdata_ep
-    URL "https://cygwin.mirror.constant.com/noarch/release/tzdata/tzdata-2026d-1-noarch.tar.xz"
+    URL "${TZDATA_URL}"
     URL_HASH SHA256=C3100D066260A767371101A3C61A8F60A52BBAEFA06755FFBF4C46E2AD2C2399
     CONFIGURE_COMMAND ""
     BUILD_COMMAND ""

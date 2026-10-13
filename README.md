@@ -11,7 +11,16 @@ The source code is based on [apache-orc](https://github.com/apache/orc).
     cd build
     cmake -G "Visual Studio 17 2022" -A x64 -DBUILD_JAVA=Off -DANALYZE_JAVA=Off ..\src
     msbuild ORC.sln /p:Configuration=Release /p:Platform=x64
-    
+
+Windows builds download the pinned time-zone archive by default. For an offline
+or hermetic build, download that exact archive separately and pass its absolute
+path when configuring:
+
+    cmake -G "Visual Studio 17 2022" -A x64 -DBUILD_JAVA=Off -DANALYZE_JAVA=Off -DTZDATA_ARCHIVE=C:\artifacts\tzdata-2026d-1-noarch.tar.xz ..\src
+
+The local archive is verified against the same pinned SHA-256 as the default
+download.
+
 # Packaging
 
 Copy all the artifacts into `bin` directory:
