@@ -14,6 +14,21 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  tzdata-freshness:
+    name: Vendored tzdata freshness
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - name: Run deterministic tzdata tests
+        run: python -m unittest discover -s scripts/tests -v
+
+      - name: Compare vendored tzdata with Cygwin
+        run: python scripts/manage_tzdata.py check
+
   linux-cpp:
     name: Linux C++ build and tests
     runs-on: ubuntu-latest
