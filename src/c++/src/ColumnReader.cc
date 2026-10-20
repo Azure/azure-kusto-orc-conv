@@ -747,10 +747,9 @@ namespace orc {
     if (totalBytes <= lastBufferLength) {
       // subtract the needed bytes from the ones left over
       lastBufferLength -= totalBytes;
-      if (lastBuffer == nullptr) {
-        throw ParseError("StringDirectColumnReader::skip: lastBuffer is null");
+      if (lastBuffer != nullptr) {
+        lastBuffer += totalBytes;
       }
-      lastBuffer += totalBytes;
     } else {
       // move the stream forward after accounting for the buffered bytes
       totalBytes -= lastBufferLength;

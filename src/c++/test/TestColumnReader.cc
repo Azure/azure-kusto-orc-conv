@@ -1483,7 +1483,7 @@ TEST(TestColumnReader, testStringDirectSkip) {
   StructVectorBatch batch(2, *getDefaultPool());
   StringVectorBatch *strings = new StringVectorBatch(2, *getDefaultPool());
   batch.fields.push_back(strings);
-  EXPECT_THROW(reader->skip(0), ParseError);
+  EXPECT_EQ(0, reader->skip(0));
   reader->next(batch, 2, 0);
   ASSERT_EQ(2, batch.numElements);
   ASSERT_EQ(true, !batch.hasNulls);
