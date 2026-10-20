@@ -139,7 +139,7 @@ namespace orc {
                            blockSize,
                            memory);
       stripeFooter.reset(new proto::StripeFooter());
-      if (!stripeFooter->ParseFromZeroCopyStream(pbStream.get())) {
+      if (!parseProtobufFromStream(stripeFooter.get(), pbStream.get())) {
         throw ParseError("Failed to parse the stripe footer");
       }
     }

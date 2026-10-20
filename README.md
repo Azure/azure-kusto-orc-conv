@@ -5,6 +5,20 @@ Utility that converts ORC files to JSON format.
 
 The source code is based on [apache-orc](https://github.com/apache/orc).
 
+# Reader compatibility
+
+Following [Apache ORC-2187](https://github.com/apache/orc/pull/2661), the
+C++ reader explicitly limits each streamed protobuf metadata message to
+1 GiB (1,073,741,824 decompressed parser bytes). This covers file and stripe
+footers, metadata, row indexes, and bloom-filter indexes. Previously accepted
+larger messages may now be rejected with a parse error. This is an intentional
+compatibility-affecting cap, not a memory-allocation ceiling: protobuf objects,
+buffers, and other reader allocations are not bounded by this value.
+
+The postscript (already limited by its one-byte length) and the optional
+caller-supplied serialized file-tail API retain their existing parsing behavior.
+No schema or public API version changes are introduced.
+
 # Building
 
     mkdir build
