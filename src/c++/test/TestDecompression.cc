@@ -435,6 +435,44 @@ namespace orc {
     ASSERT_TRUE(!result->Next(&ptr, &length));
   }
 
+  TEST_F(TestDecompression, testLzoLongDistanceMatch) {
+    const size_t literalLength = 16385;
+    std::vector<unsigned char> buffer(3);
+
+    // Emit enough literals for a 0x10 command to reference data 16 KiB back.
+    buffer.push_back(0);
+    buffer.insert(buffer.end(), 64, 0);
+    buffer.push_back(47);
+    buffer.insert(buffer.end(), literalLength, 'a');
+
+    // Copy four bytes from 16 KiB back, then stop.
+    buffer.push_back(0x12);
+    buffer.push_back(0);
+    buffer.push_back(0);
+    buffer.push_back(0x11);
+    buffer.push_back(0);
+    buffer.push_back(0);
+
+    const size_t compressedSize = buffer.size() - 3;
+    buffer[0] = static_cast<unsigned char>(compressedSize << 1);
+    buffer[1] = static_cast<unsigned char>(compressedSize >> 7);
+    buffer[2] = static_cast<unsigned char>(compressedSize >> 15);
+
+    std::unique_ptr<SeekableInputStream> result =
+      createDecompressor(CompressionKind_LZO,
+                         std::unique_ptr<SeekableInputStream>
+                         (new SeekableArrayInputStream(buffer.data(), buffer.size())),
+                         128*1024, *getDefaultPool());
+    const void *ptr;
+    int length;
+    ASSERT_TRUE(result->Next(&ptr, &length));
+    ASSERT_EQ(literalLength + 4, static_cast<size_t>(length));
+    for(size_t i=0; i < static_cast<size_t>(length); ++i) {
+      ASSERT_EQ('a', static_cast<const char*>(ptr)[i]);
+    }
+    ASSERT_TRUE(!result->Next(&ptr, &length));
+  }
+
   TEST_F(TestDecompression, testLzoOverflow) {
     const unsigned char badLzoData[] = {
       // Header: compressed size = 12, original = false.
