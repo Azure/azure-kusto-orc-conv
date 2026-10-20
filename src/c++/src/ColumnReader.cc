@@ -747,6 +747,9 @@ namespace orc {
     if (totalBytes <= lastBufferLength) {
       // subtract the needed bytes from the ones left over
       lastBufferLength -= totalBytes;
+      if (lastBuffer == nullptr) {
+        throw ParseError("StringDirectColumnReader::skip: lastBuffer is null");
+      }
       lastBuffer += totalBytes;
     } else {
       // move the stream forward after accounting for the buffered bytes
@@ -819,7 +822,9 @@ namespace orc {
     byteBatch.blob.resize(totalLength);
     char *ptr= byteBatch.blob.data();
     while (bytesBuffered + lastBufferLength < totalLength) {
-      memcpy(ptr + bytesBuffered, lastBuffer, lastBufferLength);
+      if (lastBuffer != nullptr) {
+        memcpy(ptr + bytesBuffered, lastBuffer, lastBufferLength);
+      }
       bytesBuffered += lastBufferLength;
       const void* readBuffer;
       int readLength;
