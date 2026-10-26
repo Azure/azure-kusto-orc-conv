@@ -20,12 +20,15 @@
 #include "orc/Exceptions.hh"
 
 #include "Adaptor.hh"
+#include "Compression.hh"
 #include "MemoryInputStream.hh"
 
+#include "wrap/coded-stream-wrapper.h"
 #include "wrap/gmock.h"
 #include "wrap/gtest-wrapper.h"
 #include "wrap/orc-proto-wrapper.hh"
 
+#include <algorithm>
 #include <cstring>
 #include <functional>
 #include <limits>
@@ -160,6 +163,240 @@ namespace orc {
     } catch (const ParseError& error) {
       EXPECT_NE(std::string(error.what()).find(expectedMessage), std::string::npos);
     }
+  }
+
+  TEST(TestReader, protobufMessageParsing) {
+    proto::Footer expected = makeFooter();
+    std::string bytes;
+    ASSERT_TRUE(expected.SerializeToString(&bytes));
+    SeekableArrayInputStream input(bytes.data(), bytes.length(), 1);
+    proto::Footer parsed;
+    ASSERT_TRUE(parseProtobufFromStream(&parsed, &input));
+    EXPECT_EQ(expected.SerializeAsString(), parsed.SerializeAsString());
+
+    const std::string malformed[] = {
+      bytes + '\0', bytes + '\x0c', bytes + std::string("\x0a\x02x", 3)
+    };
+    for (const std::string& data : malformed) {
+      SeekableArrayInputStream badInput(data.data(), data.length(), 1);
+      EXPECT_FALSE(parseProtobufFromStream(&parsed, &badInput));
+    }
+  }
+
+  // Exercise generated-message boundary semantics without allocating a GiB.
+  class ProtobufTestFooter {
+  public:
+    bool ParseFromCodedStream(google::protobuf::io::CodedInputStream* input) {
+      input->SetTotalBytesLimit(8);
+      return footer.ParseFromCodedStream(input);
+    }
+
+    proto::Footer footer;
+  };
+
+  class ProtobufEmptyChunkInputStream : public SeekableArrayInputStream {
+  public:
+    ProtobufEmptyChunkInputStream(const std::string& bytes, int emptyChunks)
+        : SeekableArrayInputStream(bytes.data(), bytes.length(), 1),
+          emptyChunks(emptyChunks) {}
+
+    bool Next(const void** data, int* size) override {
+      if (ByteCount() == 8 && emptyChunks > 0) {
+        --emptyChunks;
+        *data = nullptr;
+        *size = 0;
+        return true;
+      }
+      return SeekableArrayInputStream::Next(data, size);
+    }
+
+  private:
+    int emptyChunks;
+  };
+
+  TEST(TestReader, protobufGeneratedMessageBoundary) {
+    for (int length : {6, 8, 10}) {
+      std::string bytes;
+      for (int i = 0; i < length / 2; ++i) {
+        bytes.append("\x08\x00", 2); // Footer.headerLength = 0.
+      }
+      for (int blockSize : {1, 16}) {
+        SeekableArrayInputStream input(bytes.data(), bytes.length(), blockSize);
+        ProtobufTestFooter message;
+        EXPECT_EQ(length <= 8, parseProtobufFromStream(&message, &input));
+        EXPECT_EQ((std::min)(length, 8), input.ByteCount());
+        EXPECT_TRUE(message.footer.has_headerlength());
+      }
+      ProtobufEmptyChunkInputStream input(bytes, 3);
+      ProtobufTestFooter message;
+      EXPECT_EQ(length <= 8, parseProtobufFromStream(&message, &input));
+      EXPECT_EQ((std::min)(length, 8), input.ByteCount());
+    }
+    for (const std::string& bytes : {
+        std::string("\x08\0\x08\0\x08\0\0", 7),
+        std::string("\x08\0\x08\0\x08\0\x0c", 7),
+        std::string("\x08\0\x08\0\x08\0\x08\x80", 8)}) {
+      SeekableArrayInputStream input(bytes.data(), bytes.length(), 16);
+      ProtobufTestFooter message;
+      EXPECT_FALSE(parseProtobufFromStream(&message, &input));
+    }
+  }
+
+  TEST(TestReader, protobufCompressedMessageBoundary) {
+    for (CompressionKind kind : {CompressionKind_ZLIB, CompressionKind_SNAPPY}) {
+      for (int length : {6, 8, 10}) {
+        std::string bytes(1, static_cast<char>(2 * length + 1));
+        bytes.append(2, '\0'); // ORC original-block header.
+        for (int i = 0; i < length / 2; ++i) {
+          bytes.append("\x08\x00", 2);
+        }
+        std::unique_ptr<SeekableInputStream> input = createDecompressor(
+          kind, std::unique_ptr<SeekableInputStream>(
+            new SeekableArrayInputStream(bytes.data(), bytes.length())),
+          16, *getDefaultPool());
+        ProtobufTestFooter message;
+        EXPECT_EQ(length <= 8, parseProtobufFromStream(&message, input.get()));
+        if (length <= 8) {
+          EXPECT_EQ(length, input->ByteCount());
+        } else {
+          const void* remaining;
+          int size;
+          ASSERT_TRUE(input->Next(&remaining, &size));
+          ASSERT_EQ(2, size);
+          EXPECT_EQ(std::string("\x08\0", 2),
+                    std::string(static_cast<const char*>(remaining), size));
+        }
+      }
+      std::string prefix("\x11\0\0", 3);
+      for (int i = 0; i < 4; ++i) {
+        prefix.append("\x08\x00", 2);
+      }
+      std::string bytes = prefix;
+      for (int i = 0; i < 3; ++i) {
+        bytes.append("\x01\0\0", 3); // Empty original blocks before more data.
+      }
+      bytes.append("\x05\0\0\x08\0", 5);
+      std::unique_ptr<SeekableInputStream> input = createDecompressor(
+        kind, std::unique_ptr<SeekableInputStream>(
+          new SeekableArrayInputStream(bytes.data(), bytes.length())),
+        16, *getDefaultPool());
+      ProtobufTestFooter message;
+      EXPECT_FALSE(parseProtobufFromStream(&message, input.get()));
+
+      const std::string truncated = prefix + '\x01';
+      input = createDecompressor(
+        kind, std::unique_ptr<SeekableInputStream>(
+          new SeekableArrayInputStream(truncated.data(), truncated.length())),
+        16, *getDefaultPool());
+      EXPECT_THROW(parseProtobufFromStream(&message, input.get()), ParseError);
+    }
+  }
+
+  // A virtual stream lets the real coded stream skip across the production
+  // limit without allocating or parsing a GiB of generated protobuf objects.
+  class ProtobufLimitInputStream : public google::protobuf::io::ZeroCopyInputStream {
+  public:
+    explicit ProtobufLimitInputStream(int length) : length(length), position(0) {}
+
+    bool Next(const void** data, int* size) override {
+      if (position == length) {
+        return false;
+      }
+      *data = &byte;
+      *size = 1;
+      ++position;
+      return true;
+    }
+
+    void BackUp(int count) override {
+      position -= count;
+    }
+
+    bool Skip(int count) override {
+      if (count > length - position) {
+        position = length;
+        return false;
+      }
+      position += count;
+      return true;
+    }
+
+    int64_t ByteCount() const override {
+      return position;
+    }
+
+  private:
+    int length;
+    int position;
+    const char byte = 0;
+  };
+
+  class ProtobufLimitProbe {
+  public:
+    explicit ProtobufLimitProbe(int length)
+        : length(length), observedLimit(0), skipped(false), position(0) {}
+
+    bool ParseFromCodedStream(google::protobuf::io::CodedInputStream* input) {
+      observedLimit = input->BytesUntilTotalBytesLimit();
+      skipped = input->Skip(length);
+      position = input->CurrentPosition();
+      // This observes the byte limit, not generated-message acceptance.
+      return false;
+    }
+
+    int length;
+    int observedLimit;
+    bool skipped;
+    int position;
+  };
+
+  TEST(TestReader, protobufProductionByteLimit) {
+    const int limit = 1073741824;
+    EXPECT_EQ(limit, PROTOBUF_MESSAGE_MAX_LIMIT);
+    for (int length : {limit - 1, limit, limit + 1}) {
+      ProtobufLimitInputStream input(length);
+      ProtobufLimitProbe message(length);
+      EXPECT_FALSE(parseProtobufFromStream(&message, &input));
+      EXPECT_EQ(limit, message.observedLimit);
+      EXPECT_EQ(length <= limit, message.skipped);
+      EXPECT_EQ((std::min)(length, limit), message.position);
+      EXPECT_EQ((std::min)(length, limit), input.ByteCount());
+    }
+  }
+
+  TEST(TestReader, protobufFooterParseErrors) {
+    proto::Footer footer = makeFooter();
+    std::string bytes;
+    ASSERT_TRUE(footer.SerializeToString(&bytes));
+    for (char ending : {'\0', '\x0c', '\x80'}) {
+      const std::string badFooter = bytes + ending;
+      proto::PostScript postscript = makePostScript(badFooter.length(), 0);
+      std::string ps = postscript.SerializeAsString();
+      const std::string file = "ORC" + badFooter + ps + static_cast<char>(ps.length());
+      expectParseError("Failed to parse the footer", [&file]() {
+        createReader(std::unique_ptr<InputStream>(
+          new MemoryInputStream(file.data(), file.length())), ReaderOptions());
+      });
+    }
+  }
+
+  TEST(TestReader, protobufStripeFooterParseErrors) {
+    const std::string badStripeFooter(1, '\x0c');
+    proto::Footer footer = makeFooter();
+    proto::StripeInformation* stripe = footer.add_stripes();
+    stripe->set_offset(3);
+    stripe->set_footerlength(badStripeFooter.length());
+    std::string bytes = footer.SerializeAsString();
+    proto::PostScript postscript = makePostScript(bytes.length(), 0);
+    std::string ps = postscript.SerializeAsString();
+    const std::string file = "ORC" + badStripeFooter + bytes + ps +
+      static_cast<char>(ps.length());
+    std::unique_ptr<Reader> reader = createReader(std::unique_ptr<InputStream>(
+      new MemoryInputStream(file.data(), file.length())), ReaderOptions());
+    std::unique_ptr<StripeInformation> info = reader->getStripe(0);
+    expectParseError("Failed to parse the stripe footer", [&info]() {
+      info->getNumberOfStreams();
+    });
   }
 
   TEST(TestReader, testWriterVersions) {

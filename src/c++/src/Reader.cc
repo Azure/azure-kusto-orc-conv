@@ -344,7 +344,7 @@ namespace orc {
                              *contents->pool);
 
         proto::RowIndex rowIndex;
-        if (!rowIndex.ParseFromZeroCopyStream(inStream.get())) {
+        if (!parseProtobufFromStream(&rowIndex, inStream.get())) {
           throw ParseError("Failed to parse the row index");
         }
 
@@ -403,7 +403,7 @@ namespace orc {
                          contents.blockSize,
                          *contents.pool);
     proto::StripeFooter result;
-    if (!result.ParseFromZeroCopyStream(pbStream.get())) {
+    if (!parseProtobufFromStream(&result, pbStream.get())) {
       throw ParseError(std::string("bad StripeFooter from ") +
                        pbStream->getName());
     }
@@ -609,7 +609,7 @@ namespace orc {
                   *(contents->pool));
 
         proto::RowIndex rowIndex;
-        if (!rowIndex.ParseFromZeroCopyStream(pbStream.get())) {
+        if (!parseProtobufFromStream(&rowIndex, pbStream.get())) {
           throw ParseError("Failed to parse RowIndex from stripe footer");
         }
         int num_entries = rowIndex.entry_size();
@@ -711,7 +711,7 @@ namespace orc {
                            contents->blockSize,
                            *contents->pool);
       metadata.reset(new proto::Metadata());
-      if (!metadata->ParseFromZeroCopyStream(pbStream.get())) {
+      if (!parseProtobufFromStream(metadata.get(), pbStream.get())) {
         throw ParseError("Failed to parse the metadata");
       }
     }
@@ -1099,7 +1099,7 @@ namespace orc {
 
     std::unique_ptr<proto::Footer> footer =
       std::unique_ptr<proto::Footer>(new proto::Footer());
-    if (!footer->ParseFromZeroCopyStream(pbStream.get())) {
+    if (!parseProtobufFromStream(footer.get(), pbStream.get())) {
       throw ParseError("Failed to parse the footer from " +
                        stream->getName());
     }
@@ -1207,7 +1207,7 @@ namespace orc {
                              *(contents->pool));
 
         proto::BloomFilterIndex pbBFIndex;
-        if (!pbBFIndex.ParseFromZeroCopyStream(pbStream.get())) {
+        if (!parseProtobufFromStream(&pbBFIndex, pbStream.get())) {
           throw ParseError("Failed to parse BloomFilterIndex");
         }
 
