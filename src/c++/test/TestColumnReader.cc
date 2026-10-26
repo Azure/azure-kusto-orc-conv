@@ -1483,6 +1483,7 @@ TEST(TestColumnReader, testStringDirectSkip) {
   StructVectorBatch batch(2, *getDefaultPool());
   StringVectorBatch *strings = new StringVectorBatch(2, *getDefaultPool());
   batch.fields.push_back(strings);
+  EXPECT_EQ(0, reader->skip(0));
   reader->next(batch, 2, 0);
   ASSERT_EQ(2, batch.numElements);
   ASSERT_EQ(true, !batch.hasNulls);
@@ -1517,6 +1518,52 @@ TEST(TestColumnReader, testStringDirectSkip) {
     for (size_t j = 0; j < 1198 + i; ++j) {
       EXPECT_EQ(static_cast<char>(j), strings->data[i][j]);
     }
+  }
+}
+
+TEST(TestColumnReader, testStringDirectInitialAllNulls) {
+  MockStripeStreams streams;
+
+  std::vector<bool> selectedColumns(2, true);
+  EXPECT_CALL(streams, getSelectedColumns())
+      .WillRepeatedly(testing::Return(selectedColumns));
+
+  proto::ColumnEncoding directEncoding;
+  directEncoding.set_kind(proto::ColumnEncoding_Kind_DIRECT);
+  EXPECT_CALL(streams, getEncoding(testing::_))
+      .WillRepeatedly(testing::Return(directEncoding));
+
+  EXPECT_CALL(streams, getStreamProxy(0, proto::Stream_Kind_PRESENT, true))
+      .WillRepeatedly(testing::Return(nullptr));
+
+  const unsigned char present[] = {0x3d, 0x00};
+  EXPECT_CALL(streams, getStreamProxy(1, proto::Stream_Kind_PRESENT, true))
+      .WillRepeatedly(testing::Return(new SeekableArrayInputStream(
+          present, ARRAY_SIZE(present))));
+
+  const char blob[] = "";
+  EXPECT_CALL(streams, getStreamProxy(1, proto::Stream_Kind_DATA, true))
+      .WillRepeatedly(testing::Return(new SeekableArrayInputStream(
+          blob, ARRAY_SIZE(blob))));
+
+  const unsigned char lengths[] = {0x00};
+  EXPECT_CALL(streams, getStreamProxy(1, proto::Stream_Kind_LENGTH, true))
+      .WillRepeatedly(testing::Return(new SeekableArrayInputStream(
+          lengths, ARRAY_SIZE(lengths))));
+
+  std::unique_ptr<Type> rowType = createStructType();
+  rowType->addStructField("col0", createPrimitiveType(STRING));
+  std::unique_ptr<ColumnReader> reader = buildReader(*rowType, streams);
+
+  StructVectorBatch batch(8, *getDefaultPool());
+  StringVectorBatch *strings = new StringVectorBatch(8, *getDefaultPool());
+  batch.fields.push_back(strings);
+  reader->next(batch, 8, 0);
+
+  ASSERT_EQ(8, batch.numElements);
+  ASSERT_TRUE(strings->hasNulls);
+  for (size_t i = 0; i < batch.numElements; ++i) {
+    EXPECT_FALSE(strings->notNull[i]);
   }
 }
 
